@@ -100,10 +100,16 @@ func buildSession1Result(startedAt time.Time) scanner.Result {
 						"AA:BB:CC:DD:EE:FF",
 						"Acme Networks",
 						[]string{"router-a.local"},
-						[]parser.Port{openPort(80, "tcp", "http", "nginx", "1.25", "", "")},
+						[]parser.Port{
+							withScripts(
+								openPort(80, "tcp", "http", "nginx", "1.25", "", ""),
+								parser.ScriptResult{ID: "http-title", Output: "Router A"},
+								parser.ScriptResult{ID: "http-headers", Output: "Server: nginx\nStrict-Transport-Security: max-age=63072000"},
+							),
+						},
 						"Linux 6.x",
 						[]parser.ScriptResult{{ID: "uptime", Output: "up"}},
-						[]parser.ScriptResult{{ID: "http-title", Output: "Router A"}},
+						nil,
 						true,
 					),
 				},
@@ -116,10 +122,16 @@ func buildSession1Result(startedAt time.Time) scanner.Result {
 						"",
 						"",
 						[]string{"node-11.local"},
-						[]parser.Port{openPort(8080, "tcp", "http", "caddy", "2.8", "", "")},
+						[]parser.Port{
+							withScripts(
+								openPort(8080, "tcp", "http", "caddy", "2.8", "", ""),
+								parser.ScriptResult{ID: "http-title", Output: "Node 11"},
+								parser.ScriptResult{ID: "http-methods", Output: "Supported Methods: GET HEAD POST"},
+							),
+						},
 						"Linux 5.x",
 						nil,
-						[]parser.ScriptResult{{ID: "http-title", Output: "Node 11"}},
+						nil,
 						false,
 					),
 				},
@@ -179,12 +191,21 @@ func buildSession2Result(startedAt time.Time) scanner.Result {
 						"Acme Networks",
 						[]string{"router-b.local"},
 						[]parser.Port{
-							openPort(80, "tcp", "http", "nginx", "1.26", "", ""),
-							openPort(443, "tcp", "https", "nginx", "1.26", "", "ssl"),
+							withScripts(
+								openPort(80, "tcp", "http", "nginx", "1.26", "", ""),
+								parser.ScriptResult{ID: "http-title", Output: "Router B"},
+								parser.ScriptResult{ID: "http-headers", Output: "Server: nginx\nStrict-Transport-Security: max-age=63072000"},
+							),
+							withScripts(
+								openPort(443, "tcp", "https", "nginx", "1.26", "", "ssl"),
+								parser.ScriptResult{ID: "ssl-cert", Output: "Subject: CN=router-b.local\nIssuer: CN=Acme Root\nSHA256: AA:BB:CC:DD"},
+								parser.ScriptResult{ID: "ssl-enum-ciphers", Output: "TLSv1.2:\n  TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384\n  TLS_RSA_WITH_3DES_EDE_CBC_SHA"},
+								parser.ScriptResult{ID: "ssl-heartbleed", Output: "NOT VULNERABLE"},
+							),
 						},
 						"Linux 6.x",
 						[]parser.ScriptResult{{ID: "uptime", Output: "up"}},
-						[]parser.ScriptResult{{ID: "http-title", Output: "Router B"}},
+						nil,
 						true,
 					),
 				},
@@ -197,10 +218,17 @@ func buildSession2Result(startedAt time.Time) scanner.Result {
 						"",
 						"",
 						[]string{"node-11.local"},
-						[]parser.Port{openPort(8443, "tcp", "https", "caddy", "2.9", "", "ssl")},
+						[]parser.Port{
+							withScripts(
+								openPort(8443, "tcp", "https", "caddy", "2.9", "", "ssl"),
+								parser.ScriptResult{ID: "http-title", Output: "Node 11 secure"},
+								parser.ScriptResult{ID: "http-auth", Output: "Basic realm=secure"},
+								parser.ScriptResult{ID: "ssl-cert", Output: "Subject: CN=node-11.local\nIssuer: CN=Lab Root\nSHA256: 11:22:33:44"},
+							),
+						},
 						"Linux 5.x",
 						nil,
-						[]parser.ScriptResult{{ID: "http-title", Output: "Node 11 secure"}},
+						nil,
 						false,
 					),
 				},
@@ -213,7 +241,13 @@ func buildSession2Result(startedAt time.Time) scanner.Result {
 						"",
 						"",
 						[]string{"node-30.local"},
-						[]parser.Port{openPort(22, "tcp", "ssh", "OpenSSH", "9.9", "", "")},
+						[]parser.Port{
+							withScripts(
+								openPort(22, "tcp", "ssh", "OpenSSH", "9.9", "", ""),
+								parser.ScriptResult{ID: "ssh-hostkey", Output: "3072 aa:bb:cc ssh-rsa"},
+								parser.ScriptResult{ID: "ssh2-enum-algos", Output: "curve25519-sha256\ndiffie-hellman-group1-sha1"},
+							),
+						},
 						"OpenBSD",
 						nil,
 						nil,
@@ -290,4 +324,9 @@ func openPort(port int, protocol, serviceName, product, version, extraInfo, tunn
 			Tunnel:    tunnel,
 		},
 	}
+}
+
+func withScripts(port parser.Port, scripts ...parser.ScriptResult) parser.Port {
+	port.Scripts = append([]parser.ScriptResult(nil), scripts...)
+	return port
 }

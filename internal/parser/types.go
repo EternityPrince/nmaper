@@ -48,6 +48,7 @@ type Service struct {
 type ScriptResult struct {
 	ID     string `json:"id"`
 	Output string `json:"output,omitempty"`
+	RawXML string `json:"-"`
 }
 
 type OSMatch struct {

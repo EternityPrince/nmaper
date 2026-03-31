@@ -31,6 +31,10 @@ func (l *Logger) Infof(format string, args ...any) {
 	l.log("INFO", "\033[34m", fmt.Sprintf(format, args...), l.verbose)
 }
 
+func (l *Logger) Waitf(format string, args ...any) {
+	l.log("WAIT", "\033[35m", fmt.Sprintf(format, args...), true)
+}
+
 func (l *Logger) OKf(format string, args ...any) {
 	l.log("OK", "\033[32m", fmt.Sprintf(format, args...), true)
 }

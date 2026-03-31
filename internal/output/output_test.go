@@ -69,6 +69,32 @@ func TestEmitToStdoutAndFile(t *testing.T) {
 	}
 }
 
+func TestEmitStripsANSIForNonTTYAndFile(t *testing.T) {
+	t.Parallel()
+
+	colored := goodText("bright")
+
+	var stdout bytes.Buffer
+	if err := Emit(colored, "terminal", &stdout, &testLogger{}); err != nil {
+		t.Fatalf("Emit colored terminal output: %v", err)
+	}
+	if stdout.String() != "bright\n" {
+		t.Fatalf("expected ansi-stripped stdout, got %q", stdout.String())
+	}
+
+	target := filepath.Join(t.TempDir(), "report.txt")
+	if err := Emit(colored, "file:"+target, &stdout, &testLogger{}); err != nil {
+		t.Fatalf("Emit colored file output: %v", err)
+	}
+	body, err := os.ReadFile(target)
+	if err != nil {
+		t.Fatalf("read ansi-stripped file: %v", err)
+	}
+	if string(body) != "bright" {
+		t.Fatalf("expected ansi-stripped file, got %q", string(body))
+	}
+}
+
 func TestRenderReports(t *testing.T) {
 	t.Parallel()
 
@@ -78,20 +104,24 @@ func TestRenderReports(t *testing.T) {
 		Status:          "completed",
 		StartedAt:       time.Date(2026, 3, 2, 10, 0, 0, 0, time.UTC),
 		Duration:        "30s",
+		ScanLevel:       "high",
 		Target:          "10.0.0.0/24",
 		DiscoveredHosts: 3,
 		LiveHosts:       3,
 		NmapVersion:     "7.95",
 	}
 	host := history.HostSnapshot{
-		PrimaryIP: "10.0.0.20",
-		Status:    "up",
-		MAC:       "AA:BB:CC:DD:EE:FF",
-		Vendor:    "Acme Networks",
-		Hostnames: []string{"router-b.local"},
-		TopOS:     []string{"Linux 6.x"},
+		PrimaryIP:         "10.0.0.20",
+		Status:            "up",
+		MAC:               "AA:BB:CC:DD:EE:FF",
+		Vendor:            "Acme Networks",
+		Hostnames:         []string{"router-b.local"},
+		TopOS:             []string{"Linux 6.x"},
+		NSEHits:           2,
+		HostScriptHits:    0,
+		ServiceScriptHits: 2,
 		Services: []history.ServiceSnapshot{
-			{Port: 80, Protocol: "tcp", State: "open", Name: "http", Product: "nginx", Version: "1.26"},
+			{Port: 80, Protocol: "tcp", State: "open", Name: "http", Product: "nginx", Version: "1.26", Scripts: []history.ScriptResult{{ID: "http-title", Output: "Router B"}, {ID: "http-headers", Output: "Server: nginx"}}},
 		},
 		Trace: &history.TraceSnapshot{
 			Proto: "tcp",
@@ -142,9 +172,9 @@ func TestRenderReports(t *testing.T) {
 		render func() (string, error)
 		match  string
 	}{
-		{"sessions-terminal", func() (string, error) { return RenderSessions([]history.SessionSummary{session}, "terminal") }, "Sessions"},
-		{"session-md", func() (string, error) { return RenderSession(sessionReport, "md") }, "# Session 2"},
-		{"session-json", func() (string, error) { return RenderSession(sessionReport, "json") }, "\"primary_ip\": \"10.0.0.20\""},
+		{"sessions-terminal", func() (string, error) { return RenderSessions([]history.SessionSummary{session}, "terminal") }, "Level"},
+		{"session-md", func() (string, error) { return RenderSession(sessionReport, "md") }, "NSE hits"},
+		{"session-json", func() (string, error) { return RenderSession(sessionReport, "json") }, "\"nse_hits\": 2"},
 		{"diff-terminal", func() (string, error) { return RenderDiff(diffReport, "terminal") }, "Changed hosts"},
 		{"global-md", func() (string, error) { return RenderGlobal(globalReport, "md") }, "# Global Dynamics"},
 		{"devices-terminal", func() (string, error) { return RenderDevices(deviceReport, "terminal") }, "Device Analytics"},

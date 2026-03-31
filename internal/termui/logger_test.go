@@ -24,10 +24,11 @@ func TestLoggerRespectsVerboseFlag(t *testing.T) {
 	logger = New(&verbose, true)
 	logger.Phasef("phase")
 	logger.Infof("info")
+	logger.Waitf("wait")
 	logger.Warnf("warn")
 	logger.Failf("fail")
 	output := verbose.String()
-	for _, part := range []string{"phase", "info", "warn", "fail"} {
+	for _, part := range []string{"phase", "info", "wait", "warn", "fail"} {
 		if !strings.Contains(output, part) {
 			t.Fatalf("expected %q in output: %q", part, output)
 		}

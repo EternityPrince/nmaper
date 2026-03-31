@@ -3,6 +3,7 @@ package parser
 import (
 	"encoding/xml"
 	"strconv"
+	"strings"
 )
 
 type xmlRun struct {
@@ -77,6 +78,7 @@ type xmlService struct {
 type xmlScript struct {
 	ID     string `xml:"id,attr"`
 	Output string `xml:"output,attr"`
+	Inner  string `xml:",innerxml"`
 }
 
 type xmlOS struct {
@@ -147,7 +149,11 @@ func Parse(data []byte) (Run, error) {
 			}
 		}
 		for _, script := range host.Scripts {
-			parsedHost.Scripts = append(parsedHost.Scripts, ScriptResult{ID: script.ID, Output: script.Output})
+			parsedHost.Scripts = append(parsedHost.Scripts, ScriptResult{
+				ID:     script.ID,
+				Output: script.Output,
+				RawXML: strings.TrimSpace(script.Inner),
+			})
 		}
 		for _, match := range host.OS.Matches {
 			parsedHost.OSMatches = append(parsedHost.OSMatches, OSMatch{
@@ -172,7 +178,11 @@ func Parse(data []byte) (Run, error) {
 				}
 			}
 			for _, script := range port.Scripts {
-				parsedPort.Scripts = append(parsedPort.Scripts, ScriptResult{ID: script.ID, Output: script.Output})
+				parsedPort.Scripts = append(parsedPort.Scripts, ScriptResult{
+					ID:     script.ID,
+					Output: script.Output,
+					RawXML: strings.TrimSpace(script.Inner),
+				})
 			}
 			parsedHost.Ports = append(parsedHost.Ports, parsedPort)
 		}

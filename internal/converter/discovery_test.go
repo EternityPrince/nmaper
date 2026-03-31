@@ -32,6 +32,10 @@ func TestDiscoveryToDetailTargets(t *testing.T) {
 					{ID: 25, Protocol: "tcp", State: "closed"},
 				},
 			},
+			{
+				Status:    "up",
+				Addresses: []parser.Address{{Type: "ipv4", Addr: "10.0.0.40"}},
+			},
 		},
 	}
 
@@ -39,6 +43,7 @@ func TestDiscoveryToDetailTargets(t *testing.T) {
 	want := []DetailTarget{
 		{IP: "10.0.0.10", Ports: []int{22}},
 		{IP: "10.0.0.20", Ports: []int{80, 443}},
+		{IP: "10.0.0.40", Ports: []int{}},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("unexpected targets:\nwant %#v\ngot  %#v", want, got)

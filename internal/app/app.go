@@ -77,20 +77,35 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 }
 
 func runScan(ctx context.Context, opts model.Options, stdout io.Writer, logger *termui.Logger) int {
+	normalized, err := model.NormalizeScanOptions(opts)
+	if err != nil {
+		logger.Failf("%v", err)
+		return 1
+	}
+	opts = normalized
+
 	if opts.Name == "" {
 		opts.Name = scanner.SessionName(opts)
 	}
+	logger.Phasef("scan level %s selected: %s", opts.Level, model.ScanLevelSummary(opts))
 
 	sc := scanner.New(logger)
 	if err := sc.EnsureReady(ctx, opts); err != nil {
 		logger.Failf("%v", err)
 		return 1
 	}
+	sourceIdentity, err := sc.ResolveSourceIdentity(opts.Target, opts.SpoofMAC)
+	if err != nil {
+		logger.Failf("resolve source identity: %v", err)
+		return 1
+	}
+	if sourceIdentity.SpoofedMAC != "" {
+		opts.SpoofMAC = sourceIdentity.SpoofedMAC
+	}
 
 	var (
 		store     *storage.Store
 		sessionID int64
-		err       error
 	)
 	if opts.Save == model.SaveDB {
 		store, err = storage.Open(opts.DBPath)
@@ -103,6 +118,10 @@ func runScan(ctx context.Context, opts model.Options, stdout io.Writer, logger *
 		sessionID, err = store.BeginSession(ctx, opts, opts.Name, time.Now())
 		if err != nil {
 			logger.Failf("create running session: %v", err)
+			return 1
+		}
+		if err := store.AttachSourceIdentity(ctx, sessionID, sourceIdentity); err != nil {
+			logger.Failf("attach source identity: %v", err)
 			return 1
 		}
 	}
@@ -128,12 +147,24 @@ func runScan(ctx context.Context, opts model.Options, stdout io.Writer, logger *
 	if sessionID > 0 {
 		fmt.Fprintf(stdout, "Session ID: %d\n", sessionID)
 	}
+	fmt.Fprintf(stdout, "Scan level: %s\n", opts.Level)
+	fmt.Fprintf(stdout, "Profile: %s\n", model.ScanLevelSummary(opts))
+	fmt.Fprintf(stdout, "Enabled: %s\n", strings.Join(model.ScanLevelCapabilities(opts), ", "))
 	fmt.Fprintf(stdout, "Target: %s\n", opts.Target)
 	fmt.Fprintf(stdout, "Discovered hosts: %d\n", len(result.DiscoveryRun.Hosts))
 	fmt.Fprintf(stdout, "Live hosts: %d\n", len(result.Targets))
 	fmt.Fprintf(stdout, "Detail scans: %d\n", len(result.DetailRuns))
 	fmt.Fprintf(stdout, "Detail errors: %d\n", len(result.DetailErrors))
 	fmt.Fprintf(stdout, "Duration: %s\n", result.CompletedAt.Sub(result.StartedAt))
+	if result.SourceIdentity.Interface != "" {
+		fmt.Fprintf(stdout, "Scanner interface: %s\n", result.SourceIdentity.Interface)
+	}
+	if result.SourceIdentity.RealMAC != "" {
+		fmt.Fprintf(stdout, "Scanner real MAC: %s\n", result.SourceIdentity.RealMAC)
+	}
+	if result.SourceIdentity.SpoofedMAC != "" {
+		fmt.Fprintf(stdout, "Scanner spoofed MAC: %s\n", result.SourceIdentity.SpoofedMAC)
+	}
 	if opts.Save == model.SaveXML {
 		fmt.Fprintf(stdout, "XML output: %s/%s/xml\n", opts.OutputDir, result.SessionName)
 	}

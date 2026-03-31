@@ -13,22 +13,40 @@ import (
 	"nmaper/internal/model"
 	"nmaper/internal/parser"
 	"nmaper/internal/scanner"
+	"nmaper/internal/snapshot"
 )
 
 func (s *Store) BeginSession(ctx context.Context, opts model.Options, sessionName string, startedAt time.Time) (int64, error) {
 	res, err := s.db.ExecContext(
 		ctx,
-		`INSERT INTO scan_sessions (name, target, save_mode, started_at, status)
-		 VALUES (?, ?, ?, ?, 'running')`,
+		`INSERT INTO scan_sessions (name, target, save_mode, started_at, status, scan_level)
+		 VALUES (?, ?, ?, ?, 'running', ?)`,
 		sessionName,
 		opts.Target,
 		string(opts.Save),
 		startedAt.UTC().Format(time.RFC3339Nano),
+		string(opts.Level),
 	)
 	if err != nil {
 		return 0, err
 	}
 	return res.LastInsertId()
+}
+
+func (s *Store) AttachSourceIdentity(ctx context.Context, sessionID int64, identity scanner.SourceIdentity) error {
+	_, err := s.db.ExecContext(
+		ctx,
+		`UPDATE scan_sessions
+		 SET scanner_interface = ?,
+		     scanner_real_mac = ?,
+		     scanner_spoofed_mac = ?
+		 WHERE id = ?`,
+		nullString(identity.Interface),
+		nullString(identity.RealMAC),
+		nullString(identity.SpoofedMAC),
+		sessionID,
+	)
+	return err
 }
 
 func (s *Store) MarkSessionFailed(ctx context.Context, sessionID int64, sessionErr error) error {
@@ -124,6 +142,10 @@ func (s *Store) PersistCompletedSession(ctx context.Context, sessionID int64, op
 		     completed_at = ?,
 		     duration_ms = ?,
 		     nmap_version = ?,
+		     scan_level = ?,
+		     scanner_interface = ?,
+		     scanner_real_mac = ?,
+		     scanner_spoofed_mac = ?,
 		     discovery_command = ?,
 		     detail_command_template = ?,
 		     discovered_hosts = ?,
@@ -134,6 +156,10 @@ func (s *Store) PersistCompletedSession(ctx context.Context, sessionID int64, op
 		result.CompletedAt.UTC().Format(time.RFC3339Nano),
 		result.CompletedAt.Sub(result.StartedAt).Milliseconds(),
 		version,
+		string(opts.Level),
+		nullString(result.SourceIdentity.Interface),
+		nullString(result.SourceIdentity.RealMAC),
+		nullString(result.SourceIdentity.SpoofedMAC),
 		strings.Join(result.DiscoveryCommand, " "),
 		firstDetailCommand(result.DetailCommands),
 		discoveredHosts,
@@ -223,6 +249,9 @@ func persistHost(ctx context.Context, tx *sql.Tx, sessionID int64, observedAt ti
 			return err
 		}
 	}
+	if err = persistHostProfile(ctx, tx, hostObservationID, snapshot.AnalyzeHost(host)); err != nil {
+		return err
+	}
 
 	if _, err = tx.ExecContext(ctx, `DELETE FROM service_observations WHERE host_observation_id = ?`, hostObservationID); err != nil {
 		return err
@@ -270,6 +299,9 @@ func persistHost(ctx context.Context, tx *sql.Tx, sessionID int64, observedAt ti
 			); err != nil {
 				return err
 			}
+		}
+		if err = persistServiceProfile(ctx, tx, hostObservationID, serviceObservationID, snapshot.AnalyzeService(port)); err != nil {
+			return err
 		}
 	}
 

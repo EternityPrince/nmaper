@@ -21,6 +21,14 @@ const (
 	SaveXML SaveMode = "xml"
 )
 
+type ScanLevel string
+
+const (
+	ScanLevelLow  ScanLevel = "low"
+	ScanLevelMid  ScanLevel = "mid"
+	ScanLevelHigh ScanLevel = "high"
+)
+
 type Options struct {
 	Mode         Mode
 	ShowHelp     bool
@@ -30,22 +38,35 @@ type Options struct {
 	DeviceQuery  string
 	HostQuery    string
 	DeleteTarget *int64
+	Level        ScanLevel
 
-	Ports          string
-	TopPorts       int
-	OutputDir      string
-	DBPath         string
-	Save           SaveMode
-	Name           string
-	Timing         int
-	NoPing         bool
-	ServiceVersion bool
-	OSDetect       bool
-	UseSudo        bool
-	DetailWorkers  int
-	Verbose        bool
-	Dev            bool
-	Check          bool
+	Ports            string
+	TopPorts         int
+	OutputDir        string
+	DBPath           string
+	Save             SaveMode
+	Name             string
+	Timing           int
+	NoPing           bool
+	ServiceVersion   bool
+	OSDetect         bool
+	UseSudo          bool
+	SpoofMAC         string
+	DetailWorkers    int
+	Verbose          bool
+	Dev              bool
+	Check            bool
+	EnableUDP        bool
+	EnableTraceroute bool
+
+	LevelExplicit          bool
+	TopPortsExplicit       bool
+	TimingExplicit         bool
+	ServiceVersionExplicit bool
+	OSDetectExplicit       bool
+	UseSudoExplicit        bool
+	SpoofMACExplicit       bool
+	DetailWorkersExplicit  bool
 
 	Limit        int
 	Status       string
@@ -59,9 +80,11 @@ type Options struct {
 func DefaultOptions() Options {
 	return Options{
 		Mode:          ModeScan,
+		Level:         ScanLevelMid,
 		Save:          SaveDB,
 		OutputDir:     "./scans",
 		DBPath:        "./nmaper.db",
+		TopPorts:      1000,
 		Timing:        4,
 		DetailWorkers: 4,
 		Limit:         10,

@@ -5,3 +5,4 @@ coverage.out
 *.db-shm
 *.db-wal
 scans/
+.DS_Store

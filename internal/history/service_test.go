@@ -28,6 +28,9 @@ func TestSessionReportAndDiff(t *testing.T) {
 	if len(sessions) != 2 || sessions[0].ID != fixture.Session2ID || sessions[1].ID != fixture.Session1ID {
 		t.Fatalf("unexpected sessions order: %#v", sessions)
 	}
+	if sessions[0].ScanLevel != "mid" || sessions[1].ScanLevel != "mid" {
+		t.Fatalf("expected persisted scan levels, got %#v", sessions)
+	}
 
 	report, err := service.SessionReport(context.Background(), fixture.Session1ID, "100011")
 	if err != nil {
@@ -47,16 +50,31 @@ func TestSessionReportAndDiff(t *testing.T) {
 	if len(fullReport.Hosts) != 2 || fullReport.Hosts[0].Trace == nil {
 		t.Fatalf("expected trace and two hosts, got %#v", fullReport.Hosts)
 	}
+	if fullReport.Hosts[0].Services[0].HTTP == nil || fullReport.Hosts[0].Services[0].HTTP.Title == "" {
+		t.Fatalf("expected normalized HTTP fingerprint, got %#v", fullReport.Hosts[0].Services[0])
+	}
 
 	diff, err := service.Diff(context.Background(), fixture.Session1ID, fixture.Session2ID)
 	if err != nil {
 		t.Fatalf("Diff: %v", err)
 	}
-	if len(diff.NewHosts) != 2 || len(diff.MissingHosts) != 1 || len(diff.ChangedHosts) != 1 {
+	if len(diff.NewHosts) != 1 || len(diff.MissingHosts) != 0 || len(diff.ChangedHosts) != 2 {
 		t.Fatalf("unexpected diff summary: %#v", diff)
 	}
-	if diff.ChangedHosts[0].IP != "10.0.0.11" || !contains(diff.ChangedHosts[0].Reasons, "open_ports") {
+	if diff.Summary.MovedHosts != 1 || diff.Summary.OpenedPorts != 2 || diff.Summary.ClosedPorts != 1 {
+		t.Fatalf("unexpected diff summary counters: %#v", diff.Summary)
+	}
+	if diff.Summary.FingerprintChanges == 0 || diff.Summary.VulnerabilityChanges == 0 || diff.Summary.ManagementChanges == 0 {
+		t.Fatalf("expected richer change counters, got %#v", diff.Summary)
+	}
+	if !containsAlert(diff.Alerts, "management_port_opened") || !containsAlert(diff.Alerts, "http_title_changed") || !containsAlert(diff.Alerts, "vulnerability_detected") {
+		t.Fatalf("expected high-signal alerts, got %#v", diff.Alerts)
+	}
+	if diff.ChangedHosts[0].IP != "10.0.0.11" || !contains(diff.ChangedHosts[0].Reasons, "open_ports") || !contains(diff.ChangedHosts[0].Reasons, "management") {
 		t.Fatalf("unexpected changed host: %#v", diff.ChangedHosts[0])
+	}
+	if diff.ChangedHosts[1].IP != "10.0.0.20" || !contains(diff.ChangedHosts[1].Reasons, "primary_ip") || len(diff.ChangedHosts[1].NewVulnerabilities) == 0 {
+		t.Fatalf("expected host move to 10.0.0.20, got %#v", diff.ChangedHosts[1])
 	}
 }
 
@@ -85,7 +103,7 @@ func TestAnalyticsAndDevices(t *testing.T) {
 	if len(global.TopPorts) == 0 || global.TopPorts[0].Port != "80/tcp" || global.TopPorts[0].Count != 2 {
 		t.Fatalf("unexpected top ports: %#v", global.TopPorts)
 	}
-	if !strings.Contains(global.LastMovement, "between session") {
+	if !strings.Contains(global.LastMovement, "between session") || !strings.Contains(global.LastMovement, "->1 moved") || !strings.Contains(global.LastMovement, "fp:") {
 		t.Fatalf("unexpected last movement: %q", global.LastMovement)
 	}
 
@@ -117,14 +135,26 @@ func TestAnalyticsAndDevices(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Timeline: %v", err)
 	}
-	if len(timeline.Entries) != 1 || len(timeline.Entries[0].ChangedHosts) != 1 {
+	if len(timeline.Entries) != 1 || len(timeline.Entries[0].ChangedHosts) != 2 {
 		t.Fatalf("unexpected timeline: %#v", timeline)
+	}
+	if timeline.Entries[0].Summary.MovedHosts != 1 || timeline.Entries[0].Summary.FingerprintChanges == 0 || timeline.Entries[0].Summary.HighSignalAlerts == 0 || len(timeline.Entries[0].Alerts) == 0 {
+		t.Fatalf("expected one moved host in timeline, got %#v", timeline.Entries[0].Summary)
 	}
 }
 
 func contains(items []string, want string) bool {
 	for _, item := range items {
 		if item == want {
+			return true
+		}
+	}
+	return false
+}
+
+func containsAlert(items []history.DiffAlert, want string) bool {
+	for _, item := range items {
+		if item.Type == want {
 			return true
 		}
 	}

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -101,4 +103,96 @@ func TestConfirmDeletionRequiresTTY(t *testing.T) {
 	if err == nil || confirmed {
 		t.Fatalf("expected TTY guard failure, confirmed=%v err=%v", confirmed, err)
 	}
+}
+
+func TestRunScanPrintsHumanFriendlyProfile(t *testing.T) {
+	tmpDir := t.TempDir()
+	nmapPath := filepath.Join(tmpDir, "fake-nmap.sh")
+	if err := os.WriteFile(nmapPath, []byte(fakeAppScannerScript()), 0o755); err != nil {
+		t.Fatalf("write fake nmap: %v", err)
+	}
+	t.Setenv("NMAPER_NMAP_BIN", nmapPath)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := Run(
+		context.Background(),
+		[]string{"127.0.0.1", "--level", "mid", "--save", "xml", "-o", filepath.Join(tmpDir, "out")},
+		bytes.NewBuffer(nil),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("expected scan mode to succeed, code=%d stderr=%s", code, stderr.String())
+	}
+
+	out := stdout.String()
+	for _, want := range []string{
+		"Scan level: mid",
+		"Profile: balanced TCP scan with richer service fingerprints",
+		"Enabled: ",
+		"service detection",
+		"traceroute snapshots",
+		"safe NSE enrichment",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected %q in output, got:\n%s", want, out)
+		}
+	}
+}
+
+func fakeAppScannerScript() string {
+	return `#!/usr/bin/env bash
+set -euo pipefail
+
+mode="discovery"
+target=""
+for arg in "$@"; do
+  if [[ "$arg" == "-A" || "$arg" == "-sV" || "$arg" == "-O" || "$arg" == "--traceroute" ]]; then
+    mode="detail"
+  fi
+  target="$arg"
+done
+
+if [[ "$mode" == "discovery" ]]; then
+  cat <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="fake discovery" start="1710000000" version="7.95">
+  <host>
+    <status state="up"/>
+    <address addr="127.0.0.1" addrtype="ipv4"/>
+    <ports>
+      <port protocol="tcp" portid="80">
+        <state state="open"/>
+        <service name="http"/>
+      </port>
+    </ports>
+  </host>
+  <runstats>
+    <finished time="1710000001"/>
+  </runstats>
+</nmaprun>
+EOF
+  exit 0
+fi
+
+cat <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<nmaprun scanner="nmap" args="fake detail" start="1710000000" version="7.95">
+  <host>
+    <status state="up"/>
+    <address addr="${target}" addrtype="ipv4"/>
+    <ports>
+      <port protocol="tcp" portid="80">
+        <state state="open"/>
+        <service name="http" product="nginx" version="1.26"/>
+      </port>
+    </ports>
+  </host>
+  <runstats>
+    <finished time="1710000002"/>
+  </runstats>
+</nmaprun>
+EOF
+`
 }

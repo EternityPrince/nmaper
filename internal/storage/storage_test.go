@@ -35,21 +35,27 @@ func TestPersistCompletedSessionStoresFacts(t *testing.T) {
 	assertCount(t, store, "service_observations", 6)
 	assertCount(t, store, "device_ip_addresses", 4)
 	assertCount(t, store, "traces", 2)
-	assertCount(t, store, "script_results", 7)
+	assertCount(t, store, "script_results", 16)
+	assertCount(t, store, "tls_fingerprints", 2)
+	assertCount(t, store, "ssh_fingerprints", 1)
+	assertCount(t, store, "http_fingerprints", 4)
+	assertCount(t, store, "vulnerability_findings", 3)
+	assertCount(t, store, "management_surfaces", 5)
 
 	var status string
+	var scanLevel string
 	var discoveredHosts int
 	var liveHosts int
 	err = store.DB().QueryRowContext(
 		context.Background(),
-		`SELECT status, discovered_hosts, live_hosts FROM scan_sessions WHERE id = ?`,
+		`SELECT status, COALESCE(scan_level, ''), discovered_hosts, live_hosts FROM scan_sessions WHERE id = ?`,
 		fixture.Session2ID,
-	).Scan(&status, &discoveredHosts, &liveHosts)
+	).Scan(&status, &scanLevel, &discoveredHosts, &liveHosts)
 	if err != nil {
 		t.Fatalf("query session: %v", err)
 	}
-	if status != "completed" || discoveredHosts != 3 || liveHosts != 3 {
-		t.Fatalf("unexpected session aggregate: status=%s discovered=%d live=%d", status, discoveredHosts, liveHosts)
+	if status != "completed" || scanLevel != "mid" || discoveredHosts != 3 || liveHosts != 3 {
+		t.Fatalf("unexpected session aggregate: status=%s level=%s discovered=%d live=%d", status, scanLevel, discoveredHosts, liveHosts)
 	}
 }
 

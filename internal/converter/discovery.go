@@ -2,6 +2,7 @@ package converter
 
 import (
 	"sort"
+	"strings"
 
 	"nmaper/internal/parser"
 )
@@ -18,11 +19,15 @@ func DiscoveryToDetailTargets(run parser.Run) []DetailTarget {
 		if ip == "" {
 			continue
 		}
+		status := strings.ToLower(strings.TrimSpace(host.Status))
 		ports := make([]int, 0)
 		for _, port := range host.OpenPorts() {
+			if port.Protocol != "tcp" {
+				continue
+			}
 			ports = append(ports, port.ID)
 		}
-		if len(ports) == 0 {
+		if len(ports) == 0 && status != "up" {
 			continue
 		}
 		targets = append(targets, DetailTarget{IP: ip, Ports: ports})

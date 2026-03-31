@@ -73,6 +73,24 @@ func Parse(args []string) (model.Options, error) {
 			}
 			opts.DeviceQuery = value
 			i = next
+		case token == "--delete-session" || strings.HasPrefix(token, "--delete-session="):
+			primaryModes = append(primaryModes, model.ModeSession)
+			opts.Mode = model.ModeSession
+			value, next, err := requiredValue(token, "--delete-session", args, i)
+			if err != nil {
+				return opts, err
+			}
+			parsed, err := parseInt(value, "--delete-session")
+			if err != nil {
+				return opts, err
+			}
+			opts.DeleteTarget = &parsed
+			i = next
+		case token == "--delete-all-sessions":
+			primaryModes = append(primaryModes, model.ModeSession)
+			opts.Mode = model.ModeSession
+			deleteAll := int64(-1)
+			opts.DeleteTarget = &deleteAll
 		case token == "--del" || strings.HasPrefix(token, "--del="):
 			value, next, err := requiredValue(token, "--del", args, i)
 			if err != nil {
@@ -108,6 +126,7 @@ func Parse(args []string) (model.Options, error) {
 				return opts, err
 			}
 			opts.TopPorts = parsed
+			opts.TopPortsExplicit = true
 			i = next
 		case token == "-o" || token == "--output" || strings.HasPrefix(token, "--output=") || strings.HasPrefix(token, "-o"):
 			value, next, err := requiredValue(token, "--output", args, i)
@@ -147,15 +166,35 @@ func Parse(args []string) (model.Options, error) {
 				return opts, err
 			}
 			opts.Timing = int(parsed)
+			opts.TimingExplicit = true
+			i = next
+		case token == "--level" || strings.HasPrefix(token, "--level="):
+			value, next, err := requiredValue(token, "--level", args, i)
+			if err != nil {
+				return opts, err
+			}
+			opts.Level = model.ScanLevel(strings.ToLower(value))
+			opts.LevelExplicit = true
 			i = next
 		case token == "--no-ping":
 			opts.NoPing = true
 		case token == "--service-version":
 			opts.ServiceVersion = true
+			opts.ServiceVersionExplicit = true
 		case token == "--os-detect":
 			opts.OSDetect = true
+			opts.OSDetectExplicit = true
 		case token == "--sudo":
 			opts.UseSudo = true
+			opts.UseSudoExplicit = true
+		case token == "--spoof-mac" || strings.HasPrefix(token, "--spoof-mac="):
+			value, next, err := requiredValue(token, "--spoof-mac", args, i)
+			if err != nil {
+				return opts, err
+			}
+			opts.SpoofMAC = value
+			opts.SpoofMACExplicit = true
+			i = next
 		case token == "--detail-workers" || strings.HasPrefix(token, "--detail-workers="):
 			value, next, err := requiredValue(token, "--detail-workers", args, i)
 			if err != nil {
@@ -166,6 +205,7 @@ func Parse(args []string) (model.Options, error) {
 				return opts, err
 			}
 			opts.DetailWorkers = parsed
+			opts.DetailWorkersExplicit = true
 			i = next
 		case token == "--verbose":
 			opts.Verbose = true
@@ -275,13 +315,20 @@ func validate(opts model.Options, primaryModes []model.Mode) error {
 	if opts.DetailWorkers < 1 {
 		return fmt.Errorf("--detail-workers must be at least 1")
 	}
+	effectiveUseSudo := opts.UseSudo || opts.Level == model.ScanLevelHigh
+	if opts.SpoofMAC != "" && !effectiveUseSudo {
+		return fmt.Errorf("--spoof-mac requires --sudo")
+	}
 	if opts.Limit < 1 {
 		return fmt.Errorf("--limit must be at least 1")
 	}
 	if opts.Timing < 0 || opts.Timing > 5 {
 		return fmt.Errorf("-T must be between 0 and 5")
 	}
-	if opts.Ports != "" && opts.TopPorts > 0 {
+	if opts.Level != "" && !opts.Level.Valid() {
+		return fmt.Errorf("--level must be one of: low, mid, high")
+	}
+	if opts.Ports != "" && opts.TopPortsExplicit {
 		return fmt.Errorf("--ports and --top-ports are mutually exclusive")
 	}
 	if opts.Save != model.SaveDB && opts.Save != model.SaveXML {
@@ -365,9 +412,23 @@ Usage:
   nmaper --device <query> [--vendor query]
   nmaper --timeline [--limit N]
   nmaper --session --del <id|-1>
+  nmaper --delete-session <id>
+  nmaper --delete-all-sessions
   nmaper --check
 
+What nmaper collects:
+  - Two-phase snapshots: discovery plus parallel detail scans
+  - Safe service-aware NSE enrichment for TLS / SSH / HTTP / SMB / vuln signals
+  - Traceroute snapshots and targeted UDP enrichment on higher scan levels
+  - Real scanner MAC persisted in DB even when --spoof-mac is used for nmap
+
+Scan levels:
+  low   Fast unprivileged TCP scan; no sudo, no spoofing, lighter NSE profile
+  mid   Default balanced profile; richer TCP fingerprints and traceroute
+  high  Deep privileged profile; sudo enabled, random MAC spoofing by default, UDP enrichment, OS detect, richer vuln coverage
+
 Scan options:
+      --level <low|mid|high>   Scan depth profile; default is mid
   -p, --ports <ports>          Exact nmap port list
       --top-ports <N>          Scan top N ports
   -o, --output <dir>           Output directory for XML artifacts
@@ -378,7 +439,8 @@ Scan options:
       --no-ping                Disable host discovery ping
       --service-version        Add -sV to detail scan
       --os-detect              Add -O to detail scan
-      --sudo                   Warm sudo and run nmap via sudo -n
+      --sudo                   Warm sudo and run nmap via sudo -n when the level permits it
+      --spoof-mac <mac|random> Spoof source MAC for nmap while storing the real one in DB
       --detail-workers <N>     Parallel detail scans
       --verbose                Verbose runtime logging
       --dev                    Run preflight before scan
@@ -387,9 +449,20 @@ History options:
       --limit <N>              Limit number of records
       --status <value>         Session status filter
       --target-filter <query>  Fuzzy target filter
+      --host <query>           Fuzzy host filter for --session <id>
       --vendor <query>         Device vendor filter
       --mac-only               Only MAC-backed devices
       --ip-only                Only IP-only devices
       --out <mode>             clipboard, md, json, terminal, file:<path>
+
+Examples:
+  nmaper 192.168.0.0/24 --level low
+  nmaper 192.168.0.0/24 --level high
+  nmaper 192.168.0.0/24 --sudo
+  nmaper 192.168.0.0/24 --sudo --spoof-mac random
+  nmaper 192.168.0.0/24 -p 22,80,443 --save db --out json
+  nmaper --session 12 --out md
+  nmaper --diff 12 18 --out json
+  nmaper --delete-session 12
 `)
 }

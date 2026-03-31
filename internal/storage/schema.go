@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS scan_sessions (
 	status TEXT NOT NULL,
 	error_text TEXT,
 	nmap_version TEXT,
+	scan_level TEXT,
+	scanner_interface TEXT,
+	scanner_real_mac TEXT,
+	scanner_spoofed_mac TEXT,
 	discovery_command TEXT,
 	detail_command_template TEXT,
 	discovered_hosts INTEGER NOT NULL DEFAULT 0,
@@ -113,6 +117,80 @@ CREATE TABLE IF NOT EXISTS script_results (
 	service_observation_id INTEGER,
 	script_id TEXT NOT NULL,
 	output TEXT,
+	FOREIGN KEY(host_observation_id) REFERENCES host_observations(id) ON DELETE CASCADE,
+	FOREIGN KEY(service_observation_id) REFERENCES service_observations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS tls_fingerprints (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	service_observation_id INTEGER NOT NULL UNIQUE,
+	subject TEXT,
+	issuer TEXT,
+	not_before TEXT,
+	not_after TEXT,
+	sha256 TEXT,
+	versions_json TEXT NOT NULL DEFAULT '[]',
+	ciphers_json TEXT NOT NULL DEFAULT '[]',
+	weak_ciphers_json TEXT NOT NULL DEFAULT '[]',
+	FOREIGN KEY(service_observation_id) REFERENCES service_observations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ssh_fingerprints (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	service_observation_id INTEGER NOT NULL UNIQUE,
+	host_keys_json TEXT NOT NULL DEFAULT '[]',
+	algorithms_json TEXT NOT NULL DEFAULT '[]',
+	weak_algorithms_json TEXT NOT NULL DEFAULT '[]',
+	FOREIGN KEY(service_observation_id) REFERENCES service_observations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS http_fingerprints (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	service_observation_id INTEGER NOT NULL UNIQUE,
+	title TEXT,
+	server TEXT,
+	methods_json TEXT NOT NULL DEFAULT '[]',
+	auth_schemes_json TEXT NOT NULL DEFAULT '[]',
+	paths_json TEXT NOT NULL DEFAULT '[]',
+	security_headers_json TEXT NOT NULL DEFAULT '[]',
+	headers_json TEXT NOT NULL DEFAULT '[]',
+	FOREIGN KEY(service_observation_id) REFERENCES service_observations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS smb_fingerprints (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	service_observation_id INTEGER NOT NULL UNIQUE,
+	os TEXT,
+	workgroup TEXT,
+	protocols_json TEXT NOT NULL DEFAULT '[]',
+	shares_json TEXT NOT NULL DEFAULT '[]',
+	FOREIGN KEY(service_observation_id) REFERENCES service_observations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS vulnerability_findings (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	host_observation_id INTEGER,
+	service_observation_id INTEGER,
+	script_id TEXT NOT NULL,
+	identifier TEXT,
+	title TEXT,
+	severity TEXT,
+	state TEXT,
+	evidence TEXT,
+	FOREIGN KEY(host_observation_id) REFERENCES host_observations(id) ON DELETE CASCADE,
+	FOREIGN KEY(service_observation_id) REFERENCES service_observations(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS management_surfaces (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	host_observation_id INTEGER,
+	service_observation_id INTEGER,
+	category TEXT NOT NULL,
+	label TEXT,
+	port INTEGER NOT NULL,
+	protocol TEXT NOT NULL,
+	exposure TEXT,
+	detail TEXT,
 	FOREIGN KEY(host_observation_id) REFERENCES host_observations(id) ON DELETE CASCADE,
 	FOREIGN KEY(service_observation_id) REFERENCES service_observations(id) ON DELETE CASCADE
 );
