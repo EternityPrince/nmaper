@@ -1,0 +1,7 @@
+nmaper
+.build/
+coverage.out
+*.db
+*.db-shm
+*.db-wal
+scans/
