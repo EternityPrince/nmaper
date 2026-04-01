@@ -226,8 +226,35 @@ var serviceAwareScriptRules = []scriptRule{
 	},
 }
 
+func BuildPortProbeArgs(ip string, opts model.Options) []string {
+	opts = effectiveOptions(opts)
+	opts = detailPhaseOptions(ip, opts)
+
+	args := []string{
+		tcpScanFlag(opts),
+		"-T", fmt.Sprintf("%d", opts.Timing),
+		"-oX", "-",
+	}
+	switch {
+	case opts.Ports != "":
+		args = append(args, "-p", opts.Ports)
+	case opts.TopPorts > 0:
+		args = append(args, "--top-ports", fmt.Sprintf("%d", opts.TopPorts))
+	}
+	args = append(args, "-Pn")
+	if opts.ServiceVersion {
+		args = append(args, "-sV")
+	}
+	if opts.SpoofMAC != "" {
+		args = append(args, "--spoof-mac", opts.SpoofMAC)
+	}
+	args = append(args, ip)
+	return args
+}
+
 func BuildDetailArgsForHost(ip string, ports []int, host parser.Host, opts model.Options) []string {
 	opts = effectiveOptions(opts)
+	opts = detailPhaseOptions(ip, opts)
 	return buildDetailArgs(detailContextForHost(ip, ports, host, opts), opts)
 }
 
@@ -273,12 +300,10 @@ func buildDetailArgs(ctx detailProfileContext, opts model.Options) []string {
 	if opts.OSDetect {
 		args = append(args, "-O")
 	}
-	if opts.EnableTraceroute {
+	if opts.EnableTraceroute && opts.UseSudo {
 		args = append(args, "--traceroute")
 	}
-	if opts.NoPing {
-		args = append(args, "-Pn")
-	}
+	args = append(args, "-Pn")
 	if opts.SpoofMAC != "" {
 		args = append(args, "--spoof-mac", opts.SpoofMAC)
 	}

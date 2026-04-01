@@ -1,107 +1,13 @@
 package output
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"regexp"
-	"sort"
 	"strings"
 
 	"nmaper/internal/history"
 	"nmaper/internal/snapshot"
 )
-
-type logger interface {
-	Warnf(string, ...any)
-}
-
-type renderMode string
-
-const (
-	modeTerminal renderMode = "terminal"
-	modeMarkdown renderMode = "markdown"
-	modeJSON     renderMode = "json"
-)
-
-type sinkType string
-
-const (
-	sinkStdout    sinkType = "stdout"
-	sinkClipboard sinkType = "clipboard"
-	sinkFile      sinkType = "file"
-)
-
-func Resolve(out string) (renderMode, sinkType, string) {
-	switch {
-	case out == "", out == "clipboard":
-		return modeTerminal, sinkClipboard, ""
-	case out == "md":
-		return modeMarkdown, sinkStdout, ""
-	case out == "json":
-		return modeJSON, sinkStdout, ""
-	case out == "terminal":
-		return modeTerminal, sinkStdout, ""
-	case strings.HasPrefix(out, "file:"):
-		path := strings.TrimPrefix(out, "file:")
-		ext := strings.ToLower(filepath.Ext(path))
-		switch ext {
-		case ".md", ".markdown":
-			return modeMarkdown, sinkFile, path
-		case ".json":
-			return modeJSON, sinkFile, path
-		default:
-			return modeTerminal, sinkFile, path
-		}
-	default:
-		return modeTerminal, sinkStdout, ""
-	}
-}
-
-func Emit(text string, out string, stdout io.Writer, log logger) error {
-	mode, sink, path := Resolve(out)
-	visibleText := text
-	persistedText := text
-	if mode == modeTerminal {
-		persistedText = stripANSI(text)
-		if !isTTYWriter(stdout) {
-			visibleText = persistedText
-		}
-	}
-	switch sink {
-	case sinkFile:
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil && filepath.Dir(path) != "." {
-			return err
-		}
-		return os.WriteFile(path, []byte(persistedText), 0o644)
-	case sinkClipboard:
-		if _, err := io.WriteString(stdout, visibleText); err != nil {
-			return err
-		}
-		if !strings.HasSuffix(visibleText, "\n") {
-			if _, err := io.WriteString(stdout, "\n"); err != nil {
-				return err
-			}
-		}
-		if err := copyToClipboard(persistedText); err != nil && log != nil {
-			log.Warnf("clipboard copy failed: %v", err)
-		}
-		return nil
-	default:
-		if _, err := io.WriteString(stdout, visibleText); err != nil {
-			return err
-		}
-		if !strings.HasSuffix(visibleText, "\n") {
-			_, err := io.WriteString(stdout, "\n")
-			return err
-		}
-		return nil
-	}
-}
 
 func RenderSessions(items []history.SessionSummary, out string) (string, error) {
 	mode, _, _ := Resolve(out)
@@ -639,22 +545,6 @@ func renderNSEHitsPlain(host history.HostSnapshot) string {
 	return fmt.Sprintf("%d (host %d, service %d)", host.NSEHits, host.HostScriptHits, host.ServiceScriptHits)
 }
 
-func joinOrDash(items []string) string {
-	if len(items) == 0 {
-		return "-"
-	}
-	sorted := append([]string(nil), items...)
-	sort.Strings(sorted)
-	return strings.Join(sorted, ", ")
-}
-
-func emptyDash(value string) string {
-	if value == "" {
-		return "-"
-	}
-	return value
-}
-
 func renderChangedHostLabel(host history.ChangedHost) string {
 	if host.Before.IP != "" && host.Before.IP != host.After.IP {
 		return host.Before.IP + " -> " + host.After.IP
@@ -808,20 +698,6 @@ func renderDiffAlertsMarkdown(alerts []history.DiffAlert) string {
 	return builder.String()
 }
 
-func previewText(text string, limit int) string {
-	normalized := strings.Join(strings.Fields(strings.TrimSpace(text)), " ")
-	if normalized == "" {
-		return "-"
-	}
-	if len(normalized) <= limit {
-		return normalized
-	}
-	if limit <= 3 {
-		return normalized[:limit]
-	}
-	return normalized[:limit-3] + "..."
-}
-
 func renderServiceProfilesTerminal(service history.ServiceSnapshot) string {
 	var builder strings.Builder
 	if service.TLS != nil {
@@ -958,121 +834,4 @@ func renderManagementMarkdown(items []snapshot.ManagementSurface, indent string)
 		))
 	}
 	return builder.String()
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
-}
-
-func copyToClipboard(text string) error {
-	if _, err := exec.LookPath("pbcopy"); err != nil {
-		return err
-	}
-	cmd := exec.Command("pbcopy")
-	cmd.Stdin = bytes.NewBufferString(text)
-	return cmd.Run()
-}
-
-const timeLayout = "2006-01-02 15:04:05"
-
-var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
-
-const (
-	ansiReset  = "\033[0m"
-	ansiBold   = "\033[1m"
-	ansiDim    = "\033[2m"
-	ansiRed    = "\033[31m"
-	ansiGreen  = "\033[32m"
-	ansiYellow = "\033[33m"
-	ansiBlue   = "\033[34m"
-	ansiCyan   = "\033[36m"
-)
-
-func terminalTitle(title string) string {
-	line := strings.Repeat("=", maxInt(len(title), 12))
-	return style(title, ansiBold, ansiCyan) + "\n" + style(line, ansiDim) + "\n"
-}
-
-func terminalSection(title string) string {
-	line := strings.Repeat("-", maxInt(len(title), 8))
-	return "\n" + style(title, ansiBold, ansiBlue) + "\n" + style(line, ansiDim) + "\n"
-}
-
-func summaryLine(label, value string) string {
-	return fmt.Sprintf("%s %s\n", style(label+":", ansiDim), value)
-}
-
-func statusBadge(status string) string {
-	normalized := strings.ToLower(strings.TrimSpace(status))
-	switch normalized {
-	case "completed", "up", "open":
-		return style("["+strings.ToUpper(emptyDash(status))+"]", ansiBold, ansiGreen)
-	case "running":
-		return style("["+strings.ToUpper(emptyDash(status))+"]", ansiBold, ansiCyan)
-	case "failed", "down", "closed":
-		return style("["+strings.ToUpper(emptyDash(status))+"]", ansiBold, ansiRed)
-	default:
-		return style("["+strings.ToUpper(emptyDash(status))+"]", ansiBold, ansiYellow)
-	}
-}
-
-func accent(value string) string {
-	return style(value, ansiBold, ansiCyan)
-}
-
-func highlight(value string) string {
-	return style(value, ansiBold)
-}
-
-func goodText(value string) string {
-	return style(value, ansiBold, ansiGreen)
-}
-
-func warnText(value string) string {
-	return style(value, ansiBold, ansiYellow)
-}
-
-func badText(value string) string {
-	return style(value, ansiBold, ansiRed)
-}
-
-func style(text string, codes ...string) string {
-	if text == "" {
-		return ""
-	}
-	var builder strings.Builder
-	for _, code := range codes {
-		builder.WriteString(code)
-	}
-	builder.WriteString(text)
-	builder.WriteString(ansiReset)
-	return builder.String()
-}
-
-func stripANSI(text string) string {
-	return ansiPattern.ReplaceAllString(text, "")
-}
-
-func isTTYWriter(writer io.Writer) bool {
-	file, ok := writer.(*os.File)
-	if !ok {
-		return false
-	}
-	info, err := file.Stat()
-	if err != nil {
-		return false
-	}
-	return (info.Mode() & os.ModeCharDevice) != 0
-}
-
-func maxInt(left, right int) int {
-	if left > right {
-		return left
-	}
-	return right
 }

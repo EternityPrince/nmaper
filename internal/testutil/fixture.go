@@ -59,10 +59,76 @@ func persistSession(t *testing.T, ctx context.Context, store *storage.Store, opt
 	if err != nil {
 		t.Fatalf("begin session: %v", err)
 	}
-	if err := store.PersistCompletedSession(ctx, sessionID, opts, result); err != nil {
+	if err := store.PersistCompletedSession(ctx, sessionID, opts, completedScan(result)); err != nil {
 		t.Fatalf("persist session: %v", err)
 	}
 	return sessionID
+}
+
+func completedScan(result scanner.Result) storage.CompletedScan {
+	return storage.CompletedScan{
+		SessionName: result.SessionName,
+		StartedAt:   result.StartedAt,
+		CompletedAt: result.CompletedAt,
+		SourceIdentity: storage.SourceIdentity{
+			Interface:  result.SourceIdentity.Interface,
+			RealMAC:    result.SourceIdentity.RealMAC,
+			SpoofedMAC: result.SourceIdentity.SpoofedMAC,
+		},
+		DiscoveryRun:     result.DiscoveryRun,
+		DiscoveryCommand: append([]string(nil), result.DiscoveryCommand...),
+		DetailRuns:       cloneDetailRuns(result.DetailRuns),
+		DetailCommands:   cloneDetailCommands(result.DetailCommands),
+		DetailErrors:     cloneDetailErrors(result.DetailErrors),
+		Targets:          cloneTargets(result.Targets),
+	}
+}
+
+func cloneDetailRuns(source map[string]parser.Run) map[string]parser.Run {
+	if len(source) == 0 {
+		return nil
+	}
+	cloned := make(map[string]parser.Run, len(source))
+	for key, value := range source {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func cloneDetailCommands(source map[string][]string) map[string][]string {
+	if len(source) == 0 {
+		return nil
+	}
+	cloned := make(map[string][]string, len(source))
+	for key, value := range source {
+		cloned[key] = append([]string(nil), value...)
+	}
+	return cloned
+}
+
+func cloneDetailErrors(source map[string]string) map[string]string {
+	if len(source) == 0 {
+		return nil
+	}
+	cloned := make(map[string]string, len(source))
+	for key, value := range source {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func cloneTargets(source []converter.DetailTarget) []converter.DetailTarget {
+	if len(source) == 0 {
+		return nil
+	}
+	cloned := make([]converter.DetailTarget, 0, len(source))
+	for _, target := range source {
+		cloned = append(cloned, converter.DetailTarget{
+			IP:    target.IP,
+			Ports: append([]int(nil), target.Ports...),
+		})
+	}
+	return cloned
 }
 
 func buildSession1Result(startedAt time.Time) scanner.Result {

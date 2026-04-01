@@ -132,7 +132,6 @@ func TestRunScanPrintsHumanFriendlyProfile(t *testing.T) {
 		"Profile: balanced TCP scan with richer service fingerprints",
 		"Enabled: ",
 		"service detection",
-		"traceroute snapshots",
 		"safe NSE enrichment",
 	} {
 		if !strings.Contains(out, want) {

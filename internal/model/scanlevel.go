@@ -55,7 +55,7 @@ func NormalizeScanOptions(opts Options) (Options, error) {
 
 	case ScanLevelMid:
 		opts.EnableUDP = false
-		opts.EnableTraceroute = true
+		opts.EnableTraceroute = false
 		if !opts.TimingExplicit {
 			opts.Timing = 4
 		}
@@ -89,9 +89,6 @@ func NormalizeScanOptions(opts Options) (Options, error) {
 
 	if opts.SpoofMAC != "" && !opts.UseSudo {
 		return opts, fmt.Errorf("--spoof-mac requires sudo privileges")
-	}
-	if !opts.EnableTraceroute && opts.OSDetect {
-		opts.EnableTraceroute = true
 	}
 	return opts, nil
 }

@@ -9,7 +9,7 @@ func TestNormalizeScanOptionsByLevel(t *testing.T) {
 	if err != nil {
 		t.Fatalf("normalize default opts: %v", err)
 	}
-	if low.Level != ScanLevelMid || !low.ServiceVersion || low.EnableUDP || !low.EnableTraceroute || low.TopPorts != 1000 {
+	if low.Level != ScanLevelMid || !low.ServiceVersion || low.EnableUDP || low.EnableTraceroute || low.TopPorts != 1000 {
 		t.Fatalf("unexpected mid defaults: %#v", low)
 	}
 

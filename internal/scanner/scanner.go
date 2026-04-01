@@ -109,6 +109,7 @@ func BuildDiscoveryArgs(opts model.Options) []string {
 
 func BuildDetailArgs(ip string, ports []int, opts model.Options) []string {
 	opts = effectiveOptions(opts)
+	opts = detailPhaseOptions(ip, opts)
 	return buildDetailArgs(detailProfileContext{
 		IP:       ip,
 		Level:    opts.Level,
@@ -146,7 +147,7 @@ func (s *Scanner) Run(ctx context.Context, opts model.Options) (Result, error) {
 
 	s.logger.Phasef("running discovery scan against %s", opts.Target)
 	if shouldSuppressDiscoverySpoof(opts) {
-		s.logger.Infof("suppressing MAC spoofing during subnet discovery so ARP host detection stays reliable")
+		s.logger.Infof("suppressing MAC spoofing for local discovery so host detection stays reliable")
 	}
 	discoveryArgs := BuildDiscoveryArgs(opts)
 	discoveryXML, discoveryCommand, err := s.runXMLCommand(
@@ -173,11 +174,17 @@ func (s *Scanner) Run(ctx context.Context, opts model.Options) (Result, error) {
 	}
 	result.DiscoveryRun = discoveryRun
 	result.Targets = converter.DiscoveryToDetailTargets(discoveryRun)
+	if shouldSuppressDiscoverySpoof(opts) && shouldSuppressLocalDetailSpoof(result.Targets, opts) {
+		result.SourceIdentity.SpoofedMAC = ""
+	}
 
 	s.logger.OKf("discovery completed: %d hosts, %d live targets", len(discoveryRun.Hosts), len(result.Targets))
 	if len(result.Targets) == 0 {
 		result.CompletedAt = time.Now()
 		return result, nil
+	}
+	if shouldSuppressLocalDetailSpoof(result.Targets, opts) {
+		s.logger.Infof("suppressing MAC spoofing during local detail scans so TCP replies stay reliable")
 	}
 
 	s.logger.Phasef("running %d detail scans", len(result.Targets))
@@ -196,28 +203,23 @@ func (s *Scanner) Run(ctx context.Context, opts model.Options) (Result, error) {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			detailArgs := BuildDetailArgs(target.IP, target.Ports, opts)
-			detailCtx := detailProfileContext{
-				IP:       target.IP,
-				Level:    opts.Level,
-				TCPPorts: target.Ports,
-				UDPPorts: detailUDPPorts(opts),
-			}
-			detailLabel := detailScanLabel(target, opts)
-			if len(target.Ports) == 0 {
-				detailLabel = fallbackDetailScanLabel(target, opts)
-			}
-			if discoveryHost, ok := findDiscoveryHost(result.DiscoveryRun, target.IP); ok && len(target.Ports) > 0 {
-				detailArgs = BuildDetailArgsForHost(target.IP, target.Ports, discoveryHost, opts)
-				detailCtx = detailContextForHost(target.IP, target.Ports, discoveryHost, opts)
-			}
-			var detailScripts []string
+			label := detailScanLabel(target, opts)
+			detailArgs := BuildPortProbeArgs(target.IP, opts)
 			if len(target.Ports) > 0 {
-				detailScripts = effectiveDetailScripts(detailCtx)
-			}
-			label := detailLabel
-			if len(detailScripts) > 0 {
-				label += " using scripts " + strings.Join(detailScripts, ",")
+				detailArgs = BuildDetailArgs(target.IP, target.Ports, opts)
+				detailCtx := detailProfileContext{
+					IP:       target.IP,
+					Level:    opts.Level,
+					TCPPorts: target.Ports,
+					UDPPorts: detailUDPPorts(detailPhaseOptions(target.IP, opts)),
+				}
+				if discoveryHost, ok := findDiscoveryHost(result.DiscoveryRun, target.IP); ok {
+					detailArgs = BuildDetailArgsForHost(target.IP, target.Ports, discoveryHost, opts)
+					detailCtx = detailContextForHost(target.IP, target.Ports, discoveryHost, detailPhaseOptions(target.IP, opts))
+				}
+				if detailScripts := effectiveDetailScripts(detailCtx); len(detailScripts) > 0 {
+					label += " using scripts " + strings.Join(detailScripts, ",")
+				}
 			}
 			xmlBody, wrappedCommand, runErr := s.runXMLCommand(ctx, label, detailArgs, opts.UseSudo)
 			mu.Lock()
@@ -384,7 +386,7 @@ func usesHostDiscovery(opts model.Options) bool {
 }
 
 func shouldSuppressDiscoverySpoof(opts model.Options) bool {
-	return usesHostDiscovery(opts) && opts.SpoofMAC != ""
+	return opts.SpoofMAC != "" && (usesHostDiscovery(opts) || isTargetOnLocalNetwork(opts.Target))
 }
 
 func discoveryPhaseOptions(opts model.Options) model.Options {
@@ -392,6 +394,29 @@ func discoveryPhaseOptions(opts model.Options) model.Options {
 		opts.SpoofMAC = ""
 	}
 	return opts
+}
+
+func detailPhaseOptions(target string, opts model.Options) model.Options {
+	if shouldSuppressDetailSpoof(target, opts) {
+		opts.SpoofMAC = ""
+	}
+	return opts
+}
+
+func shouldSuppressDetailSpoof(target string, opts model.Options) bool {
+	return opts.SpoofMAC != "" && isTargetOnLocalNetwork(target)
+}
+
+func shouldSuppressLocalDetailSpoof(targets []converter.DetailTarget, opts model.Options) bool {
+	if opts.SpoofMAC == "" {
+		return false
+	}
+	for _, target := range targets {
+		if shouldSuppressDetailSpoof(target.IP, opts) {
+			return true
+		}
+	}
+	return false
 }
 
 func detailScanLabel(target converter.DetailTarget, opts model.Options) string {
@@ -403,12 +428,12 @@ func detailScanLabel(target converter.DetailTarget, opts model.Options) string {
 
 func fallbackDetailScanLabel(target converter.DetailTarget, opts model.Options) string {
 	if opts.Ports != "" {
-		return fmt.Sprintf("port discovery scan for %s using explicit ports %s", target.IP, opts.Ports)
+		return fmt.Sprintf("port probe scan for %s using explicit ports %s", target.IP, opts.Ports)
 	}
 	if opts.TopPorts > 0 {
-		return fmt.Sprintf("port discovery scan for %s using top %d ports", target.IP, opts.TopPorts)
+		return fmt.Sprintf("port probe scan for %s using top %d ports", target.IP, opts.TopPorts)
 	}
-	return fmt.Sprintf("port discovery scan for %s", target.IP)
+	return fmt.Sprintf("port probe scan for %s", target.IP)
 }
 
 func openTCPPorts(host parser.Host) []int {
@@ -440,6 +465,86 @@ func findDiscoveryHost(run parser.Run, ip string) (parser.Host, bool) {
 		}
 	}
 	return parser.Host{}, false
+}
+
+func isTargetOnLocalNetwork(target string) bool {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return false
+	}
+
+	if ip := net.ParseIP(target); ip != nil {
+		return isLocalIP(ip)
+	}
+
+	_, ipNet, err := net.ParseCIDR(target)
+	if err != nil {
+		return false
+	}
+	return cidrIncludesLocalInterface(ipNet)
+}
+
+func isLocalIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() {
+		return true
+	}
+
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return false
+	}
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			ipNet, ok := addr.(*net.IPNet)
+			if !ok || ipNet == nil {
+				continue
+			}
+			if ipNet.Contains(ip) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func cidrIncludesLocalInterface(target *net.IPNet) bool {
+	if target == nil {
+		return false
+	}
+
+	interfaces, err := net.Interfaces()
+	if err != nil {
+		return false
+	}
+	for _, iface := range interfaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			ipNet, ok := addr.(*net.IPNet)
+			if !ok || ipNet == nil {
+				continue
+			}
+			if target.Contains(ipNet.IP) || ipNet.Contains(target.IP) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (s *Scanner) startCommandHeartbeat(label string, command []string, startedAt time.Time) func() {

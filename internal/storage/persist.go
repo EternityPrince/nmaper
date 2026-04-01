@@ -12,7 +12,6 @@ import (
 
 	"nmaper/internal/model"
 	"nmaper/internal/parser"
-	"nmaper/internal/scanner"
 	"nmaper/internal/snapshot"
 )
 
@@ -33,7 +32,7 @@ func (s *Store) BeginSession(ctx context.Context, opts model.Options, sessionNam
 	return res.LastInsertId()
 }
 
-func (s *Store) AttachSourceIdentity(ctx context.Context, sessionID int64, identity scanner.SourceIdentity) error {
+func (s *Store) AttachSourceIdentity(ctx context.Context, sessionID int64, identity SourceIdentity) error {
 	_, err := s.db.ExecContext(
 		ctx,
 		`UPDATE scan_sessions
@@ -69,7 +68,7 @@ func (s *Store) MarkSessionFailed(ctx context.Context, sessionID int64, sessionE
 	return err
 }
 
-func (s *Store) PersistCompletedSession(ctx context.Context, sessionID int64, opts model.Options, result scanner.Result) error {
+func (s *Store) PersistCompletedSession(ctx context.Context, sessionID int64, opts model.Options, result CompletedScan) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
