@@ -239,3 +239,21 @@ type TimelineEntry struct {
 type TimelineReport struct {
 	Entries []TimelineEntry `json:"entries"`
 }
+
+type PostureSummary struct {
+	SessionID                        int64      `json:"session_id,omitempty"`
+	SessionStartedAt                 *time.Time `json:"session_started_at,omitempty"`
+	ScopeHosts                       int        `json:"scope_hosts"`
+	ManagementExposureHosts          int        `json:"management_exposure_hosts"`
+	WeakTLSHosts                     int        `json:"weak_tls_hosts"`
+	ManagementOutdatedTLSOnlyHosts   int        `json:"management_outdated_tls_only_hosts"`
+	WeakSSHHosts                     int        `json:"weak_ssh_hosts"`
+	LegacySMBHosts                   int        `json:"legacy_smb_hosts"`
+	WebWithoutSecurityHeadersHosts   int        `json:"web_without_security_headers_hosts"`
+	MissingCoreSecurityHeadersHosts  int        `json:"missing_core_security_headers_hosts"`
+	AuthSurfaceHosts                 int        `json:"auth_surface_hosts"`
+	UnstableIdentityOrPortDriftHosts int        `json:"unstable_identity_or_port_drift_hosts"`
+	VendorFilter                     string     `json:"vendor_filter,omitempty"`
+	NetworkFilter                    string     `json:"network_filter,omitempty"`
+	SessionsAnalyzedForDrift         int        `json:"sessions_analyzed_for_drift"`
+}

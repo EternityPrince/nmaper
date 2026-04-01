@@ -22,7 +22,7 @@ func runSessions(ctx context.Context, opts model.Options, stdout io.Writer, logg
 		logger.Failf("list sessions: %v", err)
 		return 1
 	}
-	body, err := output.RenderSessions(report, opts.Out)
+	body, err := output.RenderSessionsView(report, opts.Out, opts.View)
 	if err != nil {
 		logger.Failf("render sessions: %v", err)
 		return 1
@@ -47,7 +47,7 @@ func runSession(ctx context.Context, opts model.Options, stdout io.Writer, logge
 		logger.Failf("load session: %v", err)
 		return 1
 	}
-	body, err := output.RenderSession(report, opts.Out)
+	body, err := output.RenderSessionView(report, opts.Out, opts.View)
 	if err != nil {
 		logger.Failf("render session: %v", err)
 		return 1
@@ -72,7 +72,7 @@ func runDiff(ctx context.Context, opts model.Options, stdout io.Writer, logger *
 		logger.Failf("build diff: %v", err)
 		return 1
 	}
-	body, err := output.RenderDiff(report, opts.Out)
+	body, err := output.RenderDiffView(report, opts.Out, opts.View)
 	if err != nil {
 		logger.Failf("render diff: %v", err)
 		return 1
@@ -97,7 +97,7 @@ func runGlobal(ctx context.Context, opts model.Options, stdout io.Writer, logger
 		logger.Failf("build global dynamics: %v", err)
 		return 1
 	}
-	body, err := output.RenderGlobal(report, opts.Out)
+	body, err := output.RenderGlobalView(report, opts.Out, opts.View)
 	if err != nil {
 		logger.Failf("render global dynamics: %v", err)
 		return 1
@@ -122,7 +122,7 @@ func runDevices(ctx context.Context, opts model.Options, stdout io.Writer, logge
 		logger.Failf("build devices analytics: %v", err)
 		return 1
 	}
-	body, err := output.RenderDevices(report, opts.Out)
+	body, err := output.RenderDevicesView(report, opts.Out, opts.View)
 	if err != nil {
 		logger.Failf("render devices analytics: %v", err)
 		return 1
@@ -147,7 +147,7 @@ func runDevice(ctx context.Context, opts model.Options, stdout io.Writer, logger
 		logger.Failf("load device history: %v", err)
 		return 1
 	}
-	body, err := output.RenderDeviceHistory(report, opts.Out)
+	body, err := output.RenderDeviceHistoryView(report, opts.Out, opts.View)
 	if err != nil {
 		logger.Failf("render device history: %v", err)
 		return 1
@@ -172,13 +172,38 @@ func runTimeline(ctx context.Context, opts model.Options, stdout io.Writer, logg
 		logger.Failf("build timeline: %v", err)
 		return 1
 	}
-	body, err := output.RenderTimeline(report, opts.Out)
+	body, err := output.RenderTimelineView(report, opts.Out, opts.View)
 	if err != nil {
 		logger.Failf("render timeline: %v", err)
 		return 1
 	}
 	if err := output.Emit(body, opts.Out, stdout, logger); err != nil {
 		logger.Failf("emit timeline: %v", err)
+		return 1
+	}
+	return 0
+}
+
+func runPosture(ctx context.Context, opts model.Options, stdout io.Writer, logger *termui.Logger) int {
+	service, cleanup, err := openHistory(opts.DBPath)
+	if err != nil {
+		logger.Failf("open database: %v", err)
+		return 1
+	}
+	defer cleanup()
+
+	report, err := service.Posture(ctx, opts.Vendor, opts.Network)
+	if err != nil {
+		logger.Failf("build posture summary: %v", err)
+		return 1
+	}
+	body, err := output.RenderPostureView(report, opts.Out, opts.View)
+	if err != nil {
+		logger.Failf("render posture summary: %v", err)
+		return 1
+	}
+	if err := output.Emit(body, opts.Out, stdout, logger); err != nil {
+		logger.Failf("emit posture summary: %v", err)
 		return 1
 	}
 	return 0

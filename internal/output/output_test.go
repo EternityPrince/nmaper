@@ -166,20 +166,41 @@ func TestRenderReports(t *testing.T) {
 		},
 	}
 	timelineReport := history.TimelineReport{Entries: []history.TimelineEntry{{From: history.SessionSummary{ID: 1}, To: history.SessionSummary{ID: 2}, ChangedHosts: []history.ChangedHost{{IP: "10.0.0.11"}}}}}
+	postureReport := history.PostureSummary{
+		SessionID:                        2,
+		SessionStartedAt:                 ptrTime(session.StartedAt),
+		ScopeHosts:                       3,
+		ManagementExposureHosts:          3,
+		WeakTLSHosts:                     1,
+		ManagementOutdatedTLSOnlyHosts:   0,
+		WeakSSHHosts:                     1,
+		LegacySMBHosts:                   0,
+		WebWithoutSecurityHeadersHosts:   1,
+		MissingCoreSecurityHeadersHosts:  2,
+		AuthSurfaceHosts:                 2,
+		UnstableIdentityOrPortDriftHosts: 2,
+		VendorFilter:                     "acme",
+		NetworkFilter:                    "10.0.0.0/24",
+		SessionsAnalyzedForDrift:         2,
+	}
 
 	outputs := []struct {
 		name   string
 		render func() (string, error)
 		match  string
 	}{
-		{"sessions-terminal", func() (string, error) { return RenderSessions([]history.SessionSummary{session}, "terminal") }, "Level"},
+		{"sessions-terminal", func() (string, error) {
+			return RenderSessionsView([]history.SessionSummary{session}, "terminal", "compact")
+		}, "Summary"},
 		{"session-md", func() (string, error) { return RenderSession(sessionReport, "md") }, "NSE hits"},
 		{"session-json", func() (string, error) { return RenderSession(sessionReport, "json") }, "\"nse_hits\": 2"},
-		{"diff-terminal", func() (string, error) { return RenderDiff(diffReport, "terminal") }, "Changed hosts"},
-		{"global-md", func() (string, error) { return RenderGlobal(globalReport, "md") }, "# Global Dynamics"},
-		{"devices-terminal", func() (string, error) { return RenderDevices(deviceReport, "terminal") }, "Device Analytics"},
-		{"device-history-md", func() (string, error) { return RenderDeviceHistory(deviceHistory, "md") }, "# Device History: acme"},
-		{"timeline-json", func() (string, error) { return RenderTimeline(timelineReport, "json") }, "\"changed_hosts\""},
+		{"diff-terminal", func() (string, error) { return RenderDiffView(diffReport, "terminal", "compact") }, "What needs attention"},
+		{"global-md", func() (string, error) { return RenderGlobalView(globalReport, "md", "compact") }, "# Global Dynamics"},
+		{"devices-terminal", func() (string, error) { return RenderDevicesView(deviceReport, "terminal", "compact") }, "Top changed hosts"},
+		{"device-history-md", func() (string, error) { return RenderDeviceHistoryView(deviceHistory, "md", "full") }, "# Device History: acme"},
+		{"timeline-json", func() (string, error) { return RenderTimelineView(timelineReport, "json", "compact") }, "\"changed_hosts\""},
+		{"posture-terminal", func() (string, error) { return RenderPosture(postureReport, "terminal") }, "Risk Classes"},
+		{"posture-md", func() (string, error) { return RenderPosture(postureReport, "md") }, "Security Posture Summary"},
 	}
 
 	for _, tc := range outputs {
@@ -191,4 +212,8 @@ func TestRenderReports(t *testing.T) {
 			t.Fatalf("%s output missing %q:\n%s", tc.name, tc.match, got)
 		}
 	}
+}
+
+func ptrTime(value time.Time) *time.Time {
+	return &value
 }

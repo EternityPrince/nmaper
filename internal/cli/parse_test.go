@@ -29,6 +29,9 @@ func TestParseScanMode(t *testing.T) {
 	if opts.Level != model.ScanLevelHigh {
 		t.Fatalf("unexpected level: %q", opts.Level)
 	}
+	if opts.View != "full" {
+		t.Fatalf("expected default view full, got %q", opts.View)
+	}
 }
 
 func TestParseSessionHostFilter(t *testing.T) {
@@ -109,6 +112,45 @@ func TestParseDeleteAliases(t *testing.T) {
 	}
 }
 
+func TestParsePostureFilters(t *testing.T) {
+	t.Parallel()
+
+	opts, err := Parse([]string{"--posture", "--vendor", "tp-link", "--network", "192.168.0.0/24"})
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if opts.Mode != model.ModePosture {
+		t.Fatalf("expected posture mode, got %q", opts.Mode)
+	}
+	if opts.Vendor != "tp-link" || opts.Network != "192.168.0.0/24" {
+		t.Fatalf("unexpected posture filters: %#v", opts)
+	}
+}
+
+func TestParseRejectsNetworkOutsidePosture(t *testing.T) {
+	t.Parallel()
+
+	if _, err := Parse([]string{"--devices", "--network", "192.168.0.0/24"}); err == nil {
+		t.Fatalf("expected --network validation error")
+	}
+}
+
+func TestParseViewMode(t *testing.T) {
+	t.Parallel()
+
+	opts, err := Parse([]string{"--diff", "1", "2", "--view", "compact"})
+	if err != nil {
+		t.Fatalf("Parse returned error: %v", err)
+	}
+	if opts.View != "compact" {
+		t.Fatalf("expected compact view, got %q", opts.View)
+	}
+
+	if _, err := Parse([]string{"--diff", "1", "2", "--view", "verbose"}); err == nil {
+		t.Fatalf("expected --view validation error")
+	}
+}
+
 func TestUsageMentionsRichSnapshots(t *testing.T) {
 	t.Parallel()
 
@@ -118,8 +160,11 @@ func TestUsageMentionsRichSnapshots(t *testing.T) {
 		"targeted UDP enrichment on higher scan levels",
 		"--level <low|mid|high>",
 		"--host <query>",
+		"--network <cidr|ip>",
+		"--view <compact|full>",
 		"--out <mode>",
 		"nmaper --delete-session 12",
+		"nmaper --posture",
 	} {
 		if !strings.Contains(usage, want) {
 			t.Fatalf("usage missing %q:\n%s", want, usage)

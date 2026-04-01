@@ -78,6 +78,8 @@ func TestRunHistoryModes(t *testing.T) {
 		{"devices", []string{"--devices", "--db", fixture.DBPath, "--out", "json"}, "\"unique_devices\""},
 		{"device", []string{"--device", "acme", "--db", fixture.DBPath, "--out", "json"}, "\"appearances\""},
 		{"timeline", []string{"--timeline", "--db", fixture.DBPath, "--out", "json"}, "\"entries\""},
+		{"posture", []string{"--posture", "--db", fixture.DBPath, "--out", "json"}, "\"scope_hosts\""},
+		{"diff-compact-view", []string{"--diff", strconv.FormatInt(fixture.Session1ID, 10), strconv.FormatInt(fixture.Session2ID, 10), "--db", fixture.DBPath, "--view", "compact", "--out", "json"}, "\"changed_hosts\""},
 	}
 
 	for _, tc := range cases {

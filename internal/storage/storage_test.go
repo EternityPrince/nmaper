@@ -39,7 +39,7 @@ func TestPersistCompletedSessionStoresFacts(t *testing.T) {
 	assertCount(t, store, "tls_fingerprints", 2)
 	assertCount(t, store, "ssh_fingerprints", 1)
 	assertCount(t, store, "http_fingerprints", 4)
-	assertCount(t, store, "vulnerability_findings", 3)
+	assertCount(t, store, "vulnerability_findings", 14)
 	assertCount(t, store, "management_surfaces", 5)
 
 	var status string

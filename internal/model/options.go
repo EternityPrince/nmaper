@@ -11,6 +11,7 @@ const (
 	ModeTimeline   Mode = "timeline"
 	ModeDevices    Mode = "devices"
 	ModeDevice     Mode = "device"
+	ModePosture    Mode = "posture"
 	ModeCheck      Mode = "check"
 )
 
@@ -72,8 +73,10 @@ type Options struct {
 	Status       string
 	TargetFilter string
 	Vendor       string
+	Network      string
 	MACOnly      bool
 	IPOnly       bool
+	View         string
 	Out          string
 }
 
@@ -88,6 +91,7 @@ func DefaultOptions() Options {
 		Timing:        4,
 		DetailWorkers: 4,
 		Limit:         10,
+		View:          "full",
 		Out:           "clipboard",
 	}
 }

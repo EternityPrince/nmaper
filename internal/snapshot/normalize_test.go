@@ -2,6 +2,7 @@ package snapshot
 
 import (
 	"testing"
+	"time"
 
 	"nmaper/internal/parser"
 )
@@ -78,4 +79,80 @@ func TestAnalyzeServiceParsesSMBandSSH(t *testing.T) {
 	if len(smb.Vulnerabilities) == 0 {
 		t.Fatalf("expected SMBv1 vulnerability signal, got %#v", smb.Vulnerabilities)
 	}
+}
+
+func TestAnalyzeServiceAddsRichTLSSecurityFindings(t *testing.T) {
+	t.Parallel()
+
+	port := parser.Port{
+		ID:       8443,
+		Protocol: "tcp",
+		State:    "open",
+		Service:  parser.Service{Name: "https", Tunnel: "ssl"},
+		Scripts: []parser.ScriptResult{
+			{
+				ID: "ssl-cert",
+				Output: "Subject: CN=router.local\n" +
+					"Issuer: CN=router.local\n" +
+					"Not valid after: " + time.Now().Add(10*24*time.Hour).UTC().Format("2006-01-02") + "\n" +
+					"SHA256: AA:BB:CC:DD",
+			},
+			{ID: "ssl-enum-ciphers", Output: "TLSv1.0:\n  TLS_RSA_WITH_3DES_EDE_CBC_SHA\nTLSv1.1:\n  TLS_RSA_WITH_AES_128_CBC_SHA"},
+		},
+	}
+
+	profile := AnalyzeService(port)
+	for _, identifier := range []string{
+		"tls-self-signed",
+		"tls-certificate-expiring-soon",
+		"tls-missing-san",
+		"tls-outdated-protocol-only",
+		"management-ui-outdated-tls-only",
+	} {
+		if !hasFindingIdentifier(profile.Vulnerabilities, identifier) {
+			t.Fatalf("expected finding %q, got %#v", identifier, profile.Vulnerabilities)
+		}
+	}
+}
+
+func TestAnalyzeServiceAddsRichHTTPSecurityFindings(t *testing.T) {
+	t.Parallel()
+
+	port := parser.Port{
+		ID:       80,
+		Protocol: "tcp",
+		State:    "open",
+		Service:  parser.Service{Name: "http"},
+		Scripts: []parser.ScriptResult{
+			{ID: "http-title", Output: "TP-Link Admin Login"},
+			{ID: "http-headers", Output: "Server: lighttpd\nWWW-Authenticate: Basic realm=router"},
+			{ID: "http-methods", Output: "Supported Methods: GET HEAD POST PUT DELETE TRACE"},
+			{ID: "http-auth", Output: "Basic realm=router"},
+			{ID: "http-enum", Output: "/admin\n/login\n/images\nIndex of /backup"},
+		},
+	}
+
+	profile := AnalyzeService(port)
+	for _, identifier := range []string{
+		"missing-core-security-headers",
+		"dangerous-http-methods",
+		"exposed-admin-paths",
+		"directory-listing-hints",
+		"default-vendor-panel-heuristic",
+		"http-no-https-redirect",
+		"www-authenticate-without-tls",
+	} {
+		if !hasFindingIdentifier(profile.Vulnerabilities, identifier) {
+			t.Fatalf("expected finding %q, got %#v", identifier, profile.Vulnerabilities)
+		}
+	}
+}
+
+func hasFindingIdentifier(findings []VulnerabilityFinding, identifier string) bool {
+	for _, finding := range findings {
+		if finding.Identifier == identifier {
+			return true
+		}
+	}
+	return false
 }

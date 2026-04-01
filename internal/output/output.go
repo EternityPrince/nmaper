@@ -4,12 +4,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"nmaper/internal/history"
 	"nmaper/internal/snapshot"
 )
 
 func RenderSessions(items []history.SessionSummary, out string) (string, error) {
+	return RenderSessionsView(items, out, "full")
+}
+
+func RenderSessionsView(items []history.SessionSummary, out, view string) (string, error) {
 	mode, _, _ := Resolve(out)
 	switch mode {
 	case modeJSON:
@@ -23,26 +28,15 @@ func RenderSessions(items []history.SessionSummary, out string) (string, error) 
 		}
 		return builder.String(), nil
 	default:
-		var builder strings.Builder
-		builder.WriteString(terminalTitle("Sessions"))
-		for _, item := range items {
-			builder.WriteString(fmt.Sprintf("%s  %s  %s\n",
-				highlight(fmt.Sprintf("#%d", item.ID)),
-				statusBadge(item.Status),
-				style(item.StartedAt.Format(timeLayout), ansiDim),
-			))
-			builder.WriteString(summaryLine("Level", accent(emptyDash(item.ScanLevel))))
-			builder.WriteString(summaryLine("Target", highlight(item.Target)))
-			builder.WriteString(summaryLine("Duration", accent(item.Duration)))
-			builder.WriteString(summaryLine("Live/Discovered", fmt.Sprintf("%s/%s", accent(fmt.Sprintf("%d", item.LiveHosts)), accent(fmt.Sprintf("%d", item.DiscoveredHosts)))))
-			builder.WriteString(summaryLine("Nmap", accent(emptyDash(item.NmapVersion))))
-			builder.WriteString("\n")
-		}
-		return builder.String(), nil
+		return renderSessionsTerminalUX(items, normalizeTerminalView(view)), nil
 	}
 }
 
 func RenderSession(report history.SessionReport, out string) (string, error) {
+	return RenderSessionView(report, out, "full")
+}
+
+func RenderSessionView(report history.SessionReport, out, view string) (string, error) {
 	mode, _, _ := Resolve(out)
 	switch mode {
 	case modeJSON:
@@ -56,17 +50,15 @@ func RenderSession(report history.SessionReport, out string) (string, error) {
 		}
 		return builder.String(), nil
 	default:
-		var builder strings.Builder
-		builder.WriteString(terminalTitle(fmt.Sprintf("Session %d", report.Session.ID)))
-		builder.WriteString(renderSessionMetaTerminal(report.Session))
-		for _, host := range report.Hosts {
-			builder.WriteString(renderHostTerminal(host))
-		}
-		return builder.String(), nil
+		return renderSessionTerminalUX(report, normalizeTerminalView(view)), nil
 	}
 }
 
 func RenderDiff(report history.DiffReport, out string) (string, error) {
+	return RenderDiffView(report, out, "full")
+}
+
+func RenderDiffView(report history.DiffReport, out, view string) (string, error) {
 	mode, _, _ := Resolve(out)
 	switch mode {
 	case modeJSON:
@@ -77,14 +69,15 @@ func RenderDiff(report history.DiffReport, out string) (string, error) {
 		builder.WriteString(renderDiffSectionsMarkdown(report))
 		return builder.String(), nil
 	default:
-		var builder strings.Builder
-		builder.WriteString(terminalTitle(fmt.Sprintf("Diff %d -> %d", report.From.ID, report.To.ID)))
-		builder.WriteString(renderDiffSectionsTerminal(report))
-		return builder.String(), nil
+		return renderDiffTerminalUX(report, normalizeTerminalView(view)), nil
 	}
 }
 
 func RenderGlobal(report history.GlobalDynamicsReport, out string) (string, error) {
+	return RenderGlobalView(report, out, "full")
+}
+
+func RenderGlobalView(report history.GlobalDynamicsReport, out, view string) (string, error) {
 	mode, _, _ := Resolve(out)
 	switch mode {
 	case modeJSON:
@@ -104,6 +97,7 @@ func RenderGlobal(report history.GlobalDynamicsReport, out string) (string, erro
 		}
 		return builder.String(), nil
 	default:
+		_ = view
 		var builder strings.Builder
 		builder.WriteString(terminalTitle("Global Dynamics"))
 		builder.WriteString(summaryLine("Sessions analysed", accent(fmt.Sprintf("%d", report.SessionCount))))
@@ -121,6 +115,10 @@ func RenderGlobal(report history.GlobalDynamicsReport, out string) (string, erro
 }
 
 func RenderDevices(report history.DeviceAnalyticsReport, out string) (string, error) {
+	return RenderDevicesView(report, out, "full")
+}
+
+func RenderDevicesView(report history.DeviceAnalyticsReport, out, view string) (string, error) {
 	mode, _, _ := Resolve(out)
 	switch mode {
 	case modeJSON:
@@ -141,24 +139,15 @@ func RenderDevices(report history.DeviceAnalyticsReport, out string) (string, er
 		}
 		return builder.String(), nil
 	default:
-		var builder strings.Builder
-		builder.WriteString(terminalTitle("Device Analytics"))
-		builder.WriteString(summaryLine("Unique devices", accent(fmt.Sprintf("%d", report.UniqueDevices))))
-		builder.WriteString(summaryLine("MAC-backed", accent(fmt.Sprintf("%d", report.MACBacked))))
-		builder.WriteString(summaryLine("IP-only", accent(fmt.Sprintf("%d", report.IPOnly))))
-		builder.WriteString(terminalSection("Top devices"))
-		for _, item := range report.TopDevices {
-			builder.WriteString(fmt.Sprintf("  %s  %s  vendor=%s  ips=%s\n", highlight(item.Label), accent(fmt.Sprintf("x%d", item.Appearances)), accent(emptyDash(item.Vendor)), joinOrDash(item.IPs)))
-		}
-		builder.WriteString(terminalSection("Top vendors"))
-		for _, item := range report.TopVendors {
-			builder.WriteString(fmt.Sprintf("  %s  x %s\n", highlight(item.Vendor), accent(fmt.Sprintf("%d", item.Count))))
-		}
-		return builder.String(), nil
+		return renderDevicesTerminalUX(report, normalizeTerminalView(view)), nil
 	}
 }
 
 func RenderDeviceHistory(report history.DeviceHistoryReport, out string) (string, error) {
+	return RenderDeviceHistoryView(report, out, "full")
+}
+
+func RenderDeviceHistoryView(report history.DeviceHistoryReport, out, view string) (string, error) {
 	mode, _, _ := Resolve(out)
 	switch mode {
 	case modeJSON:
@@ -178,27 +167,15 @@ func RenderDeviceHistory(report history.DeviceHistoryReport, out string) (string
 		}
 		return builder.String(), nil
 	default:
-		var builder strings.Builder
-		builder.WriteString(terminalTitle(fmt.Sprintf("Device History: %s", report.Query)))
-		for _, device := range report.Devices {
-			builder.WriteString(fmt.Sprintf("%s  vendor=%s  ips=%s\n", highlight(device.Label), accent(emptyDash(device.Vendor)), joinOrDash(device.IPs)))
-			for _, appearance := range device.Appearances {
-				builder.WriteString(fmt.Sprintf("  session=%s  time=%s  ip=%s  status=%s  ports=%s  top-os=%s\n",
-					highlight(fmt.Sprintf("%d", appearance.Session.ID)),
-					style(appearance.Session.StartedAt.Format(timeLayout), ansiDim),
-					highlight(appearance.IP),
-					statusBadge(appearance.Status),
-					accent(joinOrDash(appearance.OpenPorts)),
-					accent(emptyDash(appearance.TopOS)),
-				))
-			}
-			builder.WriteString("\n")
-		}
-		return builder.String(), nil
+		return renderDeviceHistoryTerminalUX(report, normalizeTerminalView(view)), nil
 	}
 }
 
 func RenderTimeline(report history.TimelineReport, out string) (string, error) {
+	return RenderTimelineView(report, out, "full")
+}
+
+func RenderTimelineView(report history.TimelineReport, out, view string) (string, error) {
 	mode, _, _ := Resolve(out)
 	switch mode {
 	case modeJSON:
@@ -212,13 +189,58 @@ func RenderTimeline(report history.TimelineReport, out string) (string, error) {
 		}
 		return builder.String(), nil
 	default:
+		return renderTimelineTerminalUX(report, normalizeTerminalView(view)), nil
+	}
+}
+
+func RenderPosture(report history.PostureSummary, out string) (string, error) {
+	return RenderPostureView(report, out, "full")
+}
+
+func RenderPostureView(report history.PostureSummary, out, view string) (string, error) {
+	mode, _, _ := Resolve(out)
+	switch mode {
+	case modeJSON:
+		return asJSON(report)
+	case modeMarkdown:
 		var builder strings.Builder
-		builder.WriteString(terminalTitle("Timeline"))
-		for _, entry := range report.Entries {
-			builder.WriteString(fmt.Sprintf("%s -> %s\n", highlight(fmt.Sprintf("%d", entry.From.ID)), highlight(fmt.Sprintf("%d", entry.To.ID))))
-			builder.WriteString(renderTimelineEntryTerminal(entry))
-			builder.WriteString("\n")
-		}
+		builder.WriteString("# Security Posture Summary\n\n")
+		builder.WriteString(fmt.Sprintf("- Session: `%d`\n", report.SessionID))
+		builder.WriteString(fmt.Sprintf("- Session started: `%s`\n", formatPostureTime(report.SessionStartedAt)))
+		builder.WriteString(fmt.Sprintf("- Scope hosts: `%d`\n", report.ScopeHosts))
+		builder.WriteString(fmt.Sprintf("- Vendor filter: `%s`\n", emptyDash(report.VendorFilter)))
+		builder.WriteString(fmt.Sprintf("- Network filter: `%s`\n\n", emptyDash(report.NetworkFilter)))
+		builder.WriteString(fmt.Sprintf("- Devices with management exposure: `%d`\n", report.ManagementExposureHosts))
+		builder.WriteString(fmt.Sprintf("- Devices with weak TLS: `%d`\n", report.WeakTLSHosts))
+		builder.WriteString(fmt.Sprintf("- Management UI with outdated TLS only: `%d`\n", report.ManagementOutdatedTLSOnlyHosts))
+		builder.WriteString(fmt.Sprintf("- Devices with weak SSH: `%d`\n", report.WeakSSHHosts))
+		builder.WriteString(fmt.Sprintf("- Devices with legacy SMB: `%d`\n", report.LegacySMBHosts))
+		builder.WriteString(fmt.Sprintf("- Web surfaces without security headers: `%d`\n", report.WebWithoutSecurityHeadersHosts))
+		builder.WriteString(fmt.Sprintf("- Missing core security headers: `%d`\n", report.MissingCoreSecurityHeadersHosts))
+		builder.WriteString(fmt.Sprintf("- Devices with auth surfaces: `%d`\n", report.AuthSurfaceHosts))
+		builder.WriteString(fmt.Sprintf("- Unstable identity/port drift hosts: `%d`\n", report.UnstableIdentityOrPortDriftHosts))
+		builder.WriteString(fmt.Sprintf("- Sessions analyzed for drift: `%d`\n", report.SessionsAnalyzedForDrift))
+		return builder.String(), nil
+	default:
+		_ = view
+		var builder strings.Builder
+		builder.WriteString(terminalTitle("Security Posture Summary"))
+		builder.WriteString(summaryLine("Session", accent(fmt.Sprintf("%d", report.SessionID))))
+		builder.WriteString(summaryLine("Session started", style(formatPostureTime(report.SessionStartedAt), ansiDim)))
+		builder.WriteString(summaryLine("Scope hosts", accent(fmt.Sprintf("%d", report.ScopeHosts))))
+		builder.WriteString(summaryLine("Vendor filter", accent(emptyDash(report.VendorFilter))))
+		builder.WriteString(summaryLine("Network filter", accent(emptyDash(report.NetworkFilter))))
+		builder.WriteString(terminalSection("Risk Classes"))
+		builder.WriteString(summaryLine("Management exposure", warnText(fmt.Sprintf("%d", report.ManagementExposureHosts))))
+		builder.WriteString(summaryLine("Weak TLS", warnText(fmt.Sprintf("%d", report.WeakTLSHosts))))
+		builder.WriteString(summaryLine("Mgmt UI outdated TLS only", warnText(fmt.Sprintf("%d", report.ManagementOutdatedTLSOnlyHosts))))
+		builder.WriteString(summaryLine("Weak SSH", warnText(fmt.Sprintf("%d", report.WeakSSHHosts))))
+		builder.WriteString(summaryLine("Legacy SMB", warnText(fmt.Sprintf("%d", report.LegacySMBHosts))))
+		builder.WriteString(summaryLine("Web w/o security headers", warnText(fmt.Sprintf("%d", report.WebWithoutSecurityHeadersHosts))))
+		builder.WriteString(summaryLine("Missing core sec headers", warnText(fmt.Sprintf("%d", report.MissingCoreSecurityHeadersHosts))))
+		builder.WriteString(summaryLine("Auth surfaces", warnText(fmt.Sprintf("%d", report.AuthSurfaceHosts))))
+		builder.WriteString(summaryLine("Identity/port drift", warnText(fmt.Sprintf("%d", report.UnstableIdentityOrPortDriftHosts))))
+		builder.WriteString(summaryLine("Drift sessions analyzed", accent(fmt.Sprintf("%d", report.SessionsAnalyzedForDrift))))
 		return builder.String(), nil
 	}
 }
@@ -229,6 +251,13 @@ func asJSON(value any) (string, error) {
 		return "", err
 	}
 	return string(body), nil
+}
+
+func formatPostureTime(value *time.Time) string {
+	if value == nil {
+		return "-"
+	}
+	return value.Format(timeLayout)
 }
 
 func renderSessionMetaTerminal(session history.SessionSummary) string {

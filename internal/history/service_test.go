@@ -107,6 +107,35 @@ func TestAnalyticsAndDevices(t *testing.T) {
 		t.Fatalf("unexpected last movement: %q", global.LastMovement)
 	}
 
+	posture, err := service.Posture(context.Background(), "", "")
+	if err != nil {
+		t.Fatalf("Posture: %v", err)
+	}
+	if posture.ScopeHosts != 3 || posture.ManagementExposureHosts != 3 {
+		t.Fatalf("unexpected posture scope/management: %#v", posture)
+	}
+	if posture.WeakTLSHosts != 1 || posture.ManagementOutdatedTLSOnlyHosts != 0 || posture.WeakSSHHosts != 1 || posture.LegacySMBHosts != 0 {
+		t.Fatalf("unexpected posture weak/legacy counters: %#v", posture)
+	}
+	if posture.WebWithoutSecurityHeadersHosts != 1 || posture.MissingCoreSecurityHeadersHosts != 2 || posture.AuthSurfaceHosts != 2 {
+		t.Fatalf("unexpected posture web/auth counters: %#v", posture)
+	}
+	if posture.UnstableIdentityOrPortDriftHosts != 2 || posture.SessionsAnalyzedForDrift != 2 {
+		t.Fatalf("unexpected posture drift counters: %#v", posture)
+	}
+
+	filteredPosture, err := service.Posture(context.Background(), "acme", "10.0.0.0/28")
+	if err != nil {
+		t.Fatalf("Posture filtered: %v", err)
+	}
+	if filteredPosture.ScopeHosts != 0 {
+		t.Fatalf("expected no hosts in filtered posture, got %#v", filteredPosture)
+	}
+
+	if _, err := service.Posture(context.Background(), "", "not-a-network"); err == nil {
+		t.Fatalf("expected invalid network filter error")
+	}
+
 	devices, err := service.Devices(context.Background(), "acme", false, false)
 	if err != nil {
 		t.Fatalf("Devices: %v", err)

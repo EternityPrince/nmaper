@@ -12,6 +12,9 @@ func TestDefaultOptionsAndNeedsDatabase(t *testing.T) {
 	if opts.Save != SaveDB {
 		t.Fatalf("expected default save mode db, got %q", opts.Save)
 	}
+	if opts.View != "full" {
+		t.Fatalf("expected default view full, got %q", opts.View)
+	}
 	if !opts.NeedsDatabase() {
 		t.Fatalf("scan mode with db save should need database")
 	}

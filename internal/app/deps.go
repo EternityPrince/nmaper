@@ -37,6 +37,7 @@ type historyService interface {
 	Devices(context.Context, string, bool, bool) (history.DeviceAnalyticsReport, error)
 	DeviceHistory(context.Context, string, string, bool, bool) (history.DeviceHistoryReport, error)
 	Timeline(context.Context, int, string, string) (history.TimelineReport, error)
+	Posture(context.Context, string, string) (history.PostureSummary, error)
 }
 
 func newScanRunner(log *termui.Logger) scanRunner {

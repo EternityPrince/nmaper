@@ -10,15 +10,15 @@ func TestAlertsFromChangedHost(t *testing.T) {
 		After:       HostDiffSnapshot{IP: "10.0.0.50"},
 		OpenedPorts: []string{"3389/tcp", "8443/tcp"},
 		ScriptChanges: []ScriptDelta{
-			{Scope: "443/tcp", ID: "ssl-cert", Before: "CN=old.example", After: "CN=new.example"},
+			{Scope: "443/tcp", ID: "ssl-cert", Before: "Subject: CN=old.example\nIssuer: CN=Old CA\nSHA256: AA:AA", After: "Subject: CN=new.example\nIssuer: CN=New CA\nSHA256: BB:BB"},
 			{Scope: "22/tcp", ID: "ssh-hostkey", Before: "ecdsa-sha2 old", After: "ecdsa-sha2 new"},
 			{Scope: "8443/tcp", ID: "http-title", Before: "Old Console", After: "New Console"},
 		},
 	}
 
 	alerts := alertsFromChangedHost(host)
-	if len(alerts) != 5 {
-		t.Fatalf("expected 5 alerts, got %#v", alerts)
+	if len(alerts) != 7 {
+		t.Fatalf("expected 7 alerts, got %#v", alerts)
 	}
 	if !hasAlertType(alerts, "rdp_appeared") {
 		t.Fatalf("expected rdp alert, got %#v", alerts)
@@ -34,6 +34,12 @@ func TestAlertsFromChangedHost(t *testing.T) {
 	}
 	if !hasAlertType(alerts, "http_title_changed") {
 		t.Fatalf("expected http-title alert, got %#v", alerts)
+	}
+	if !hasAlertType(alerts, "tls_issuer_changed") {
+		t.Fatalf("expected tls issuer alert, got %#v", alerts)
+	}
+	if !hasAlertType(alerts, "tls_key_fingerprint_changed") {
+		t.Fatalf("expected tls key fingerprint alert, got %#v", alerts)
 	}
 }
 

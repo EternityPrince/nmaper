@@ -9,11 +9,13 @@
 - SQLite-backed history with sessions, devices, services, OS guesses, scripts, and traces
 - Structured snapshots for TLS / SSH / HTTP / SMB fingerprints, vulnerability findings, and management surface
 - Read-only analytics: sessions, session detail, diff, global dynamics, devices, device history, timeline
+- Security posture summary mode with risk-class counters (`--posture`, optional `--vendor` / `--network` filters)
 - Identity-aware diffing: hosts are matched by MAC first, then IP, so device moves are visible as moves instead of fake disappear/reappear events
 - High-signal alerts in diff/timeline: new management ports, SMB/RDP appearance, TLS cert changes, SSH hostkey rotation, HTTP title changes, and new vulnerability signals
 - Optional source MAC spoofing for `nmap` while preserving the real scanner MAC in SQLite metadata
 - XML-only mode for artifact generation without database writes
 - Clipboard, terminal, Markdown, JSON, and `file:<path>` output modes
+- View density for history terminal output: `--view compact|full`
 - Safe interactive deletion flow for single-session or full-history cleanup
 
 ## Scan Levels
@@ -88,9 +90,13 @@ GOCACHE=/tmp/nmaper-gocache GOPROXY=off GOSUMDB=off go test ./...
 ./nmaper --sessions
 ./nmaper --session 12
 ./nmaper --diff 12 18 --out json
+./nmaper --diff 12 18 --view compact
 ./nmaper --diff-global --limit 20
 ./nmaper --devices --vendor tp
 ./nmaper --device tp --vendor tp --out md
+./nmaper --posture
+./nmaper --posture --vendor tp-link
+./nmaper --posture --network 192.168.0.0/24
 ./nmaper --timeline
 ./nmaper --delete-session 12
 ./nmaper --delete-all-sessions

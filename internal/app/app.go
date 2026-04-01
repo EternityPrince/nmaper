@@ -61,6 +61,8 @@ func Run(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.
 		return runDevice(ctx, opts, stdout, logger)
 	case model.ModeTimeline:
 		return runTimeline(ctx, opts, stdout, logger)
+	case model.ModePosture:
+		return runPosture(ctx, opts, stdout, logger)
 	case model.ModeCheck:
 		return 0
 	default:

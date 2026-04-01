@@ -156,6 +156,28 @@ func alertsFromChangedHost(host ChangedHost) []DiffAlert {
 			Title:    "TLS certificate changed",
 			Detail:   fmt.Sprintf("%s -> %s", previewOutputs(beforeCerts), previewOutputs(afterCerts)),
 		})
+		beforeIssuer := extractTLSCertField(beforeCerts, "issuer:")
+		afterIssuer := extractTLSCertField(afterCerts, "issuer:")
+		if beforeIssuer != "" && afterIssuer != "" && beforeIssuer != afterIssuer {
+			alerts = append(alerts, DiffAlert{
+				Type:     "tls_issuer_changed",
+				Severity: "high",
+				Host:     hostIP,
+				Title:    "TLS issuer changed",
+				Detail:   fmt.Sprintf("%s -> %s", beforeIssuer, afterIssuer),
+			})
+		}
+		beforeSHA := extractTLSCertField(beforeCerts, "sha256:", "fingerprint-256:", "sha-256:")
+		afterSHA := extractTLSCertField(afterCerts, "sha256:", "fingerprint-256:", "sha-256:")
+		if beforeSHA != "" && afterSHA != "" && beforeSHA != afterSHA {
+			alerts = append(alerts, DiffAlert{
+				Type:     "tls_key_fingerprint_changed",
+				Severity: "high",
+				Host:     hostIP,
+				Title:    "TLS certificate key fingerprint changed",
+				Detail:   fmt.Sprintf("%s -> %s", beforeSHA, afterSHA),
+			})
+		}
 	}
 
 	beforeSSH, afterSSH := aggregateScriptOutputs(host.ScriptChanges, "ssh-hostkey")
@@ -262,6 +284,21 @@ func mapKeys(values map[string]struct{}) []string {
 	}
 	sort.Strings(keys)
 	return keys
+}
+
+func extractTLSCertField(outputs []string, prefixes ...string) string {
+	for _, output := range outputs {
+		for _, line := range strings.Split(strings.ReplaceAll(output, "\r\n", "\n"), "\n") {
+			trimmed := strings.TrimSpace(line)
+			lower := strings.ToLower(trimmed)
+			for _, prefix := range prefixes {
+				if strings.HasPrefix(lower, strings.ToLower(prefix)) {
+					return strings.TrimSpace(trimmed[len(prefix):])
+				}
+			}
+		}
+	}
+	return ""
 }
 
 func managementPortLabel(port string) string {

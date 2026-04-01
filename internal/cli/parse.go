@@ -64,6 +64,9 @@ func Parse(args []string) (model.Options, error) {
 		case token == "--devices":
 			primaryModes = append(primaryModes, model.ModeDevices)
 			opts.Mode = model.ModeDevices
+		case token == "--posture":
+			primaryModes = append(primaryModes, model.ModePosture)
+			opts.Mode = model.ModePosture
 		case token == "--device" || strings.HasPrefix(token, "--device="):
 			primaryModes = append(primaryModes, model.ModeDevice)
 			opts.Mode = model.ModeDevice
@@ -241,6 +244,13 @@ func Parse(args []string) (model.Options, error) {
 			}
 			opts.Vendor = value
 			i = next
+		case token == "--network" || strings.HasPrefix(token, "--network="):
+			value, next, err := requiredValue(token, "--network", args, i)
+			if err != nil {
+				return opts, err
+			}
+			opts.Network = value
+			i = next
 		case token == "--mac-only":
 			opts.MACOnly = true
 		case token == "--ip-only":
@@ -251,6 +261,13 @@ func Parse(args []string) (model.Options, error) {
 				return opts, err
 			}
 			opts.Out = value
+			i = next
+		case token == "--view" || strings.HasPrefix(token, "--view="):
+			value, next, err := requiredValue(token, "--view", args, i)
+			if err != nil {
+				return opts, err
+			}
+			opts.View = strings.ToLower(strings.TrimSpace(value))
 			i = next
 		case token == "--check":
 			opts.Check = true
@@ -306,8 +323,11 @@ func validate(opts model.Options, primaryModes []model.Mode) error {
 			return fmt.Errorf("--host can only be used with --session <id>")
 		}
 	}
-	if opts.Vendor != "" && opts.Mode != model.ModeDevices && opts.Mode != model.ModeDevice {
-		return fmt.Errorf("--vendor can only be used with --devices or --device")
+	if opts.Vendor != "" && opts.Mode != model.ModeDevices && opts.Mode != model.ModeDevice && opts.Mode != model.ModePosture {
+		return fmt.Errorf("--vendor can only be used with --devices, --device, or --posture")
+	}
+	if opts.Network != "" && opts.Mode != model.ModePosture {
+		return fmt.Errorf("--network can only be used with --posture")
 	}
 	if opts.MACOnly && opts.IPOnly {
 		return fmt.Errorf("--mac-only and --ip-only cannot be used together")
@@ -333,6 +353,9 @@ func validate(opts model.Options, primaryModes []model.Mode) error {
 	}
 	if opts.Save != model.SaveDB && opts.Save != model.SaveXML {
 		return fmt.Errorf("--save must be one of: db, xml")
+	}
+	if opts.View != "compact" && opts.View != "full" {
+		return fmt.Errorf("--view must be one of: compact, full")
 	}
 
 	if opts.Mode != model.ModeScan && opts.Mode != model.ModeCheck && opts.Target != "" {
@@ -403,14 +426,15 @@ func optionalInt(args []string, index int) (int64, bool) {
 func Usage() string {
 	return strings.TrimSpace(`
 Usage:
-  nmaper [target] [scan options]
-  nmaper --sessions [filters]
-  nmaper --session [id] [--host query] [--out clipboard|md|json|file:path]
-  nmaper --diff <id1> <id2> [--out md|json|file:path]
-  nmaper --diff-global [--limit N]
-  nmaper --devices [--vendor query] [--mac-only|--ip-only]
-  nmaper --device <query> [--vendor query]
-  nmaper --timeline [--limit N]
+  nmaper <target> [scan options]
+  nmaper --sessions [history filters]
+  nmaper --session [id] [--host query] [history output]
+  nmaper --diff <id1> <id2> [history output]
+  nmaper --diff-global [--limit N] [history output]
+  nmaper --timeline [--limit N] [history output]
+  nmaper --devices [--vendor query] [--mac-only|--ip-only] [history output]
+  nmaper --device <query> [--vendor query] [history output]
+  nmaper --posture [--vendor query] [--network cidr|ip] [history output]
   nmaper --session --del <id|-1>
   nmaper --delete-session <id>
   nmaper --delete-all-sessions
@@ -421,6 +445,11 @@ What nmaper collects:
   - Safe service-aware NSE enrichment for TLS / SSH / HTTP / SMB / vuln signals
   - Traceroute snapshots and targeted UDP enrichment on higher scan levels
   - Real scanner MAC persisted in DB even when --spoof-mac is used for nmap
+
+History UX:
+  - Summary-first output: Summary -> High-signal alerts -> Top changed hosts -> details
+  - Alert-first drift reading in diff/timeline/security workflows
+  - Terminal density control via --view compact|full
 
 Scan levels:
   low   Fast unprivileged TCP scan; no sudo, no spoofing, lighter NSE profile
@@ -445,15 +474,19 @@ Scan options:
       --verbose                Verbose runtime logging
       --dev                    Run preflight before scan
 
-History options:
+History filters:
       --limit <N>              Limit number of records
       --status <value>         Session status filter
       --target-filter <query>  Fuzzy target filter
       --host <query>           Fuzzy host filter for --session <id>
-      --vendor <query>         Device vendor filter
+      --vendor <query>         Device vendor filter (--devices, --device, --posture)
+      --network <cidr|ip>      Host network filter for --posture
       --mac-only               Only MAC-backed devices
       --ip-only                Only IP-only devices
-      --out <mode>             clipboard, md, json, terminal, file:<path>
+
+History output:
+      --view <compact|full>    Terminal density mode for history outputs
+      --out <mode>             clipboard|terminal|md|json|file:<path>
 
 Examples:
   nmaper 192.168.0.0/24 --level low
@@ -461,8 +494,15 @@ Examples:
   nmaper 192.168.0.0/24 --sudo
   nmaper 192.168.0.0/24 --sudo --spoof-mac random
   nmaper 192.168.0.0/24 -p 22,80,443 --save db --out json
+  nmaper --sessions --view compact
   nmaper --session 12 --out md
   nmaper --diff 12 18 --out json
+  nmaper --diff 12 18 --view compact
+  nmaper --timeline --view compact
+  nmaper --devices --vendor tp-link --view compact
+  nmaper --posture
+  nmaper --posture --vendor tp-link
+  nmaper --posture --network 192.168.0.0/24
   nmaper --delete-session 12
 `)
 }
