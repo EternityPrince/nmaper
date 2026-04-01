@@ -192,6 +192,9 @@ func TestRenderReports(t *testing.T) {
 		{"sessions-terminal", func() (string, error) {
 			return RenderSessionsView([]history.SessionSummary{session}, "terminal", "compact")
 		}, "Summary"},
+		{"session-terminal-full", func() (string, error) {
+			return RenderSessionView(sessionReport, "terminal", "full")
+		}, "Ports:"},
 		{"session-md", func() (string, error) { return RenderSession(sessionReport, "md") }, "NSE hits"},
 		{"session-json", func() (string, error) { return RenderSession(sessionReport, "json") }, "\"nse_hits\": 2"},
 		{"diff-terminal", func() (string, error) { return RenderDiffView(diffReport, "terminal", "compact") }, "What needs attention"},

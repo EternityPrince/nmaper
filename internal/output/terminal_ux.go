@@ -492,7 +492,40 @@ func renderSessionHostCard(risk hostRisk) string {
 	builder.WriteString(summaryLine("Risk", riskBadge(risk.Level, risk.Score)))
 	builder.WriteString(summaryLine("Evidence", style(previewText(firstOrDash(risk.Evidence), 120), ansiDim)))
 	builder.WriteString(summaryLine("History", fmt.Sprintf("nse=%s", renderNSEHits(host))))
+	if len(host.Services) > 0 {
+		builder.WriteString(style("  Ports:\n", ansiBlue))
+		builder.WriteString(renderHostServicesDetailedTerminal(host))
+	}
 	builder.WriteString("\n")
+	return builder.String()
+}
+
+func renderHostServicesDetailedTerminal(host history.HostSnapshot) string {
+	services := append([]history.ServiceSnapshot(nil), host.Services...)
+	sort.Slice(services, func(i, j int) bool {
+		if services[i].Port == services[j].Port {
+			return strings.ToLower(services[i].Protocol) < strings.ToLower(services[j].Protocol)
+		}
+		return services[i].Port < services[j].Port
+	})
+
+	var builder strings.Builder
+	for _, service := range services {
+		builder.WriteString(fmt.Sprintf("    %s  %s  %s %s %s\n",
+			highlight(fmt.Sprintf("%d/%s", service.Port, service.Protocol)),
+			statusBadge(service.State),
+			accent(emptyDash(service.Name)),
+			style(emptyDash(service.Product), ansiDim),
+			style(emptyDash(service.Version), ansiDim),
+		))
+		for _, script := range service.Scripts {
+			builder.WriteString(fmt.Sprintf("      script=%s  %s\n",
+				highlight(script.ID),
+				style(previewText(emptyDash(script.Output), 88), ansiDim),
+			))
+		}
+		builder.WriteString(renderServiceProfilesTerminal(service))
+	}
 	return builder.String()
 }
 
